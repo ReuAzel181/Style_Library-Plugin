@@ -1,0 +1,26 @@
+{
+  "global": {
+    "layout": {
+      "container": {
+        "max-width": {
+          "desktop": { "value": "1280px", "type": "dimension" },
+          "mobile": { "value": "100%", "type": "dimension" }
+        },
+        "padding": {
+          "desktop": { "value": "{primitive.spacing.8}", "type": "dimension" },
+          "mobile": { "value": "{primitive.spacing.4}", "type": "dimension" }
+        }
+      },
+      "section": {
+        "margin-bottom": {
+          "desktop": { "value": "{primitive.spacing.12}", "type": "dimension" },
+          "mobile": { "value": "{primitive.spacing.8}", "type": "dimension" }
+        },
+        "gap": {
+          "desktop": { "value": "{primitive.spacing.6}", "type": "dimension" },
+          "mobile": { "value": "{primitive.spacing.4}", "type": "dimension" }
+        }
+      }
+    }
+  }
+}

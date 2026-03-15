@@ -1,0 +1,48 @@
+{
+  "component": {
+    "toggle": {
+      "base": {
+        "width": { "value": "44px", "type": "dimension" },
+        "height": { "value": "24px", "type": "dimension" },
+        "radius": { "value": "{primitive.radius.full}", "type": "dimension" },
+        "transition-duration": { "value": "200ms", "type": "duration" }
+      },
+      "default": {
+        "background": { "value": "{primitive.color.neutral.300}", "type": "color" },
+        "handle-color": { "value": "{primitive.color.white}", "type": "color" },
+        "border": { "value": "transparent", "type": "color" },
+        "shadow": { "value": "none", "type": "shadow" }
+      },
+      "hover": {
+        "background": { "value": "{primitive.color.neutral.400}", "type": "color" }
+      },
+      "checked": {
+        "default": {
+          "background": { "value": "{primitive.color.brand.600}", "type": "color" },
+          "handle-color": { "value": "{primitive.color.white}", "type": "color" },
+          "border": { "value": "transparent", "type": "color" },
+          "shadow": { "value": "{global.semantic.color.shadow.sm}", "type": "shadow" }
+        },
+        "hover": {
+          "background": { "value": "{primitive.color.brand.700}", "type": "color" }
+        },
+        "focus": {
+          "border": { "value": "{global.semantic.color.border.focus}", "type": "color" },
+          "ring-color": { "value": "{primitive.color.brand.100}", "type": "color" },
+          "ring-width": { "value": "4px", "type": "dimension" }
+        },
+        "disabled": {
+          "background": { "value": "{primitive.color.neutral.200}", "type": "color" },
+          "handle-color": { "value": "{primitive.color.neutral.100}", "type": "color" },
+          "opacity": { "value": "{primitive.opacity.50}", "type": "number" }
+        }
+      },
+      "handle": {
+        "size": { "value": "20px", "type": "dimension" },
+        "margin": { "value": "2px", "type": "dimension" },
+        "radius": { "value": "{primitive.radius.full}", "type": "dimension" },
+        "shadow": { "value": "0 1px 2px rgba(0, 0, 0, 0.1)", "type": "shadow" }
+      }
+    }
+  }
+}

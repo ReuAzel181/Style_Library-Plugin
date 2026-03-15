@@ -1,0 +1,40 @@
+{
+  "component": {
+    "button": {
+      "tertiary": {
+        "default": {
+          "background": { "value": "transparent", "type": "color" },
+          "text": { "value": "{primitive.color.neutral.600}", "type": "color" },
+          "border": { "value": "transparent", "type": "color" },
+          "shadow": { "value": "none", "type": "shadow" }
+        },
+        "hover": {
+          "background": { "value": "{primitive.color.neutral.50}", "type": "color" },
+          "text": { "value": "{primitive.color.neutral.800}", "type": "color" },
+          "border": { "value": "transparent", "type": "color" },
+          "shadow": { "value": "none", "type": "shadow" }
+        },
+        "active": {
+          "background": { "value": "{primitive.color.neutral.100}", "type": "color" },
+          "text": { "value": "{primitive.color.neutral.900}", "type": "color" },
+          "border": { "value": "transparent", "type": "color" },
+          "shadow": { "value": "none", "type": "shadow" }
+        },
+        "focus": {
+          "background": { "value": "transparent", "type": "color" },
+          "text": { "value": "{primitive.color.neutral.600}", "type": "color" },
+          "border": { "value": "{global.semantic.color.border.focus}", "type": "color" },
+          "ring-color": { "value": "{primitive.color.neutral.100}", "type": "color" },
+          "ring-width": { "value": "4px", "type": "dimension" }
+        },
+        "disabled": {
+          "background": { "value": "transparent", "type": "color" },
+          "text": { "value": "{primitive.color.neutral.400}", "type": "color" },
+          "border": { "value": "transparent", "type": "color" },
+          "shadow": { "value": "none", "type": "shadow" },
+          "opacity": { "value": "{primitive.opacity.50}", "type": "number" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "component": {
+    "button": {
+      "base": {
+        "padding-x": { "value": "{primitive.spacing.4}", "type": "dimension" },
+        "padding-y": { "value": "{primitive.spacing.2}", "type": "dimension" },
+        "radius": { "value": "{primitive.radius.md}", "type": "dimension" },
+        "font-family": { "value": "{global.typography.font-family.sans}", "type": "fontFamily" },
+        "font-size": { "value": "{global.typography.body.md}", "type": "dimension" },
+        "font-weight": { "value": "{global.typography.font-weight.medium}", "type": "fontWeight" },
+        "gap": { "value": "{primitive.spacing.2}", "type": "dimension" }
+      }
+    }
+  }
+}

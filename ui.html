@@ -1,0 +1,3498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #ffffff;
+      --fg: #333333;
+      --muted: #888888;
+      --border: #eeeeee;
+      --accent: #18A0FB;
+      --accent-soft: #e8f4ff;
+      --success: #1BC47D;
+      --warning: #FF9900;
+      --error: #F24822;
+      --radius: 8px;
+      --shadow: 0 2px 4px rgba(0,0,0,0.05);
+      --sidebar-bg: #fcfcfc;
+      --main-bg: #ffffff;
+    }
+
+    body.dark {
+      --bg: #1e1e1e;
+      --fg: #ffffff;
+      --muted: #aaaaaa;
+      --border: #333333;
+      --accent: #18A0FB;
+      --accent-soft: rgba(24, 160, 251, 0.2);
+      --sidebar-bg: #252525;
+      --main-bg: #1e1e1e;
+      --shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+
+    /* Scrollbar Styling */
+    ::-webkit-scrollbar {
+      width: 10px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f1f1f1;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #ccc;
+      border-radius: 5px;
+      border: 2px solid #f1f1f1;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #aaa;
+    }
+
+    body.dark ::-webkit-scrollbar-track {
+      background: #252525;
+    }
+    body.dark ::-webkit-scrollbar-thumb {
+      background: #555;
+      border: 2px solid #252525;
+    }
+    body.dark ::-webkit-scrollbar-thumb:hover {
+      background: #777;
+    }
+
+    * { box-sizing: border-box; -webkit-font-smoothing: antialiased; }
+
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Inter', -apple-system, system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      font-size: 12px;
+      line-height: 1.4;
+      height: 100vh;
+      width: 100vw;
+      overflow: hidden;
+      user-select: none; /* Prevent text selection on click */
+    }
+
+    input, .table-input, .picker-search input {
+      user-select: text; /* Re-enable selection for inputs */
+    }
+
+    ::view-transition-old(root),
+    ::view-transition-new(root) {
+      animation: none;
+      mix-blend-mode: normal;
+    }
+
+    ::view-transition-old(root) {
+      z-index: 1;
+    }
+
+    ::view-transition-new(root) {
+      z-index: 2;
+    }
+
+    body.dark::view-transition-old(root) {
+      z-index: 2;
+    }
+
+    body.dark::view-transition-new(root) {
+      z-index: 1;
+    }
+
+    ::view-transition-image-pair(root) {
+      isolation: auto;
+    }
+
+    ::view-transition-new(root) {
+      animation: 500ms cubic-bezier(0.4, 0, 0.2, 1) both reveal;
+    }
+
+    @keyframes reveal {
+      from {
+        clip-path: circle(0 at var(--ripple-x) var(--ripple-y));
+      }
+      to {
+        clip-path: circle(125vmax at var(--ripple-x) var(--ripple-y));
+      }
+    }
+
+    /* Fallback ripple */
+    .theme-ripple-circle {
+      position: fixed;
+      top: var(--ripple-y);
+      left: var(--ripple-x);
+      width: 0;
+      height: 0;
+      border-radius: 50%;
+      background: var(--bg);
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+    .theme-ripple-animate {
+      animation: theme-ripple-grow 1000ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    }
+
+    @keyframes theme-ripple-grow {
+      from { width: 0; height: 0; opacity: 1; }
+      to { width: 300vmax; height: 300vmax; opacity: 1; }
+    }
+
+    .collection-item, .group-item {
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .sidebar-list-container {
+      transition: opacity 0.2s ease-in-out;
+    }
+
+    .group-list-container {
+      transition: height 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s;
+      overflow: hidden;
+    }
+
+    .app {
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Header */
+    .header {
+      flex-shrink: 0;
+      padding: 12px 16px;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 10;
+      position: relative;
+    }
+
+    .header h1 { font-size: 14px; font-weight: 700; margin: 0; color: var(--fg); }
+
+    /* Layout Split */
+    .content-split {
+      flex: 1;
+      display: flex;
+      min-height: 0;
+      background: var(--bg);
+    }
+
+    /* Left Sidebar: Collections */
+    .sidebar {
+      width: 230px;
+      background: var(--sidebar-bg);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+    }
+
+    .sidebar-label {
+      padding: 12px 16px 8px;
+      font-weight: 700;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+
+    .collection-item {
+      padding: 10px 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 500;
+      color: var(--fg);
+      transition: all 0.1s;
+      border-left: 2px solid transparent;
+      opacity: 0.8;
+    }
+
+    .collection-item:hover { background: rgba(0,0,0,0.05); color: var(--fg); opacity: 1; }
+    body.dark .collection-item:hover { background: rgba(255,255,255,0.05); }
+    .collection-item.active { background: var(--bg); color: var(--accent); border-left-color: var(--accent); font-weight: 600; opacity: 1; }
+
+    /* Group Sidebar Items */
+    .group-sidebar {
+      margin-top: 12px;
+      border-top: 1px solid var(--border);
+      padding-top: 12px;
+    }
+
+    .group-item {
+      padding: 6px 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 11px;
+      transition: all 0.1s;
+    }
+
+    .group-item:hover { background: rgba(0,0,0,0.05); color: var(--fg); }
+    body.dark .group-item:hover { background: rgba(255,255,255,0.05); }
+    .group-item.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+
+    .group-arrow {
+      width: 10px;
+      height: 10px;
+      transition: transform 0.2s;
+      opacity: 0.5;
+    }
+
+    .group-item.collapsed .group-arrow { transform: rotate(-90deg); }
+    .group-children {
+      transition: height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      overflow: hidden;
+    }
+
+    .group-indent { width: 12px; flex-shrink: 0; }
+    .group-count { margin-left: auto; font-size: 10px; color: var(--muted); opacity: 0.8; }
+
+    .font-picker-item {
+      padding: 8px 12px;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      color: var(--fg);
+    }
+    .font-picker-item:hover { background: var(--accent-soft); color: var(--accent); }
+
+    /* Right Main: Variable Table */
+    .main-view {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      background: var(--main-bg);
+    }
+
+    .view-header {
+      padding: 12px 16px;
+      background: var(--main-bg);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .view-title { font-weight: 700; color: var(--fg); font-size: 13px; }
+
+    .notice-box {
+      margin: 12px 16px 0;
+      padding: 10px 12px;
+      background: rgba(242, 72, 34, 0.1);
+      color: var(--error);
+      font-size: 11px;
+      border-radius: var(--radius);
+      border: 1px solid rgba(242, 72, 34, 0.2);
+      display: none;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* Table Structure */
+    .table-container {
+      flex: 1;
+      overflow: auto;
+      padding: 0;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      border: 1px solid var(--border);
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      background: var(--sidebar-bg);
+      padding: 10px 12px;
+      text-align: left;
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      border-bottom: 1px solid var(--border);
+      border-right: 1px solid var(--border);
+      z-index: 5;
+    }
+
+    td {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+      border-right: 1px solid var(--border);
+      vertical-align: middle;
+      background: var(--main-bg);
+    }
+
+    th:last-child, td:last-child {
+      border-right: none;
+    }
+
+    .col-name { width: 225px; }
+    .col-mode { width: 225px; }
+    .col-empty { width: auto; }
+
+    /* Inputs & Editable Cells */
+    .table-input {
+      width: 100%;
+      border: none;
+      padding: 0;
+      font-size: 11px;
+      color: var(--fg);
+      background: transparent;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      outline: none;
+      cursor: text;
+      font-family: inherit;
+      height: 100%;
+      display: flex;
+      align-items: center;
+    }
+
+    td {
+      padding: 0 12px;
+      height: 40px;
+      border-bottom: 1px solid var(--border);
+      border-right: 1px solid var(--border);
+      vertical-align: middle;
+      transition: background 0.1s;
+    }
+
+    td:hover { background: rgba(128,128,128,0.05); }
+    tr:focus-within td { background: var(--accent-soft); }
+    td:focus-within { background: var(--bg) !important; outline: 2px solid var(--accent); outline-offset: -2px; z-index: 2; position: relative; }
+
+    /* Custom Color Picker Modal */
+    .color-picker-modal {
+      position: fixed;
+      width: 240px;
+      background: #2c2c2c;
+      border-radius: 8px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+      display: none;
+      flex-direction: column;
+      padding: 12px;
+      z-index: 200;
+      color: #fff;
+      font-size: 11px;
+    }
+
+    .theme-toggle {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: var(--muted);
+      transition: all 0.2s;
+      border: 1px solid var(--border);
+    }
+    .theme-toggle:hover { background: var(--accent-soft); color: var(--accent); }
+    
+    .alias-pill {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-size: 11px;
+      color: var(--fg);
+      min-width: 0;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .alias-pill:hover { border-color: var(--accent); background: var(--bg); box-shadow: var(--shadow); }
+
+    .picker-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.3);
+      z-index: 100;
+      display: none;
+    }
+
+    .variable-picker {
+      position: absolute;
+      width: 240px;
+      max-height: 320px;
+      background: var(--bg);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      border: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      z-index: 101;
+      color: var(--fg);
+    }
+
+    .picker-search {
+      padding: 8px;
+      border-bottom: 1px solid var(--border);
+      background: var(--sidebar-bg);
+    }
+
+    .picker-search input {
+      width: 100%;
+      border: 1px solid var(--border);
+      padding: 6px 10px;
+      border-radius: 4px;
+      font-size: 11px;
+      outline: none;
+      background: var(--bg);
+      color: var(--fg);
+    }
+
+    .picker-option {
+      padding: 8px 12px;
+      font-size: 11px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--fg);
+    }
+    .picker-option:hover { background: var(--accent-soft); color: var(--accent); }
+
+    .color-opacity-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+      padding: 0;
+      border-radius: 4px;
+      color: var(--fg);
+    }
+
+    .opacity-separator {
+      width: 1px;
+      height: 12px;
+      background: var(--border);
+      margin: 0 2px;
+    }
+
+    .cp-sat-val {
+      width: 100%;
+      height: 160px;
+      border-radius: 4px;
+      position: relative;
+      cursor: crosshair;
+      margin-bottom: 12px;
+      overflow: hidden;
+    }
+
+    .cp-sat-val-white {
+      width: 100%; height: 100%;
+      background: linear-gradient(to right, #fff, rgba(255,255,255,0));
+    }
+
+    .cp-sat-val-black {
+      width: 100%; height: 100%;
+      background: linear-gradient(to top, #000, rgba(0,0,0,0));
+    }
+
+    .cp-cursor {
+      width: 12px; height: 12px;
+      border: 2px solid #fff;
+      border-radius: 50%;
+      position: absolute;
+      transform: translate(-50%, -50%);
+      box-shadow: 0 0 4px rgba(0,0,0,0.5);
+      pointer-events: none;
+    }
+
+    .cp-sliders {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .cp-slider-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .cp-slider-label {
+      width: 70px;
+      font-size: 11px;
+      color: #fff;
+      font-weight: 500;
+      flex-shrink: 0;
+    }
+
+    .cp-hue-slider {
+      flex: 1;
+      height: 10px;
+      border-radius: 5px;
+      appearance: none;
+      background: linear-gradient(to right, #f00 0%, #ff0 17%, #0f0 33%, #0ff 50%, #00f 67%, #f0f 83%, #f00 100%);
+      outline: none;
+    }
+
+    .cp-alpha-slider {
+      flex: 1;
+      height: 10px;
+      border-radius: 5px;
+      appearance: none;
+      outline: none;
+      background-image: 
+        linear-gradient(to right, transparent, var(--accent)),
+        conic-gradient(#444 0.25turn, #666 0.25turn 0.5turn, #444 0.5turn 0.75turn, #666 0.75turn);
+      background-size: 100% 100%, 8px 8px;
+    }
+
+    body.dark .cp-alpha-slider {
+      background-image: 
+        linear-gradient(to right, transparent, var(--accent)),
+        conic-gradient(#222 0.25turn, #333 0.25turn 0.5turn, #222 0.5turn 0.75turn, #333 0.75turn);
+    }
+
+    .cp-hue-slider::-webkit-slider-thumb, .cp-alpha-slider::-webkit-slider-thumb {
+      appearance: none;
+      width: 12px; height: 12px;
+      background: #fff;
+      border-radius: 50%;
+      border: 1px solid #000;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+      cursor: pointer;
+    }
+
+    /* Hide number spinners */
+    input::-webkit-outer-spin-button,
+    input::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    input[type=number] {
+      -moz-appearance: textfield;
+    }
+
+    .cp-inputs {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .cp-select {
+      background: #333;
+      color: #fff;
+      border: 1px solid #444;
+      padding: 4px;
+      border-radius: 4px;
+      font-size: 10px;
+      outline: none;
+      cursor: pointer;
+    }
+
+    .cp-input-group {
+      display: flex;
+      flex: 1;
+      background: #333;
+      border: 1px solid #444;
+      border-radius: 4px;
+      overflow: hidden;
+      align-items: center;
+    }
+
+    body.dark .themed-text {
+      color: #ffffff !important;
+    }
+
+    body.dark .cp-input-group, body.dark .cp-input, body.dark .cp-select {
+      background: #111;
+      border-color: #333;
+      color: #fff;
+    }
+
+    body.dark .table-input, 
+    body.dark .alias-name, 
+    body.dark .opacity-value,
+    body.dark .status-msg,
+    body.dark th,
+    body.dark .view-title,
+    body.dark .alias-pill,
+    body.dark .color-opacity-row span {
+      color: #ffffff !important;
+    }
+
+    body.dark .type-icon {
+      color: #ffffff;
+      opacity: 0.8;
+    }
+
+    body.dark .link-btn {
+      color: #ffffff;
+    }
+
+    .cp-input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: #fff;
+      padding: 4px;
+      text-align: center;
+      font-size: 10px;
+      outline: none;
+      width: 0;
+      min-width: 0;
+      border-right: 1px solid #444;
+    }
+    .cp-input:last-child { border-right: none; }
+
+    .cp-input-percent {
+      padding-right: 6px;
+      color: #888;
+      font-size: 10px;
+      user-select: none;
+    }
+
+    .cp-unlink-btn {
+      cursor: pointer;
+      opacity: 0.6;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 4px;
+    }
+    .cp-unlink-btn:hover { opacity: 1; }
+
+    /* Alias & Color Picker Styles */
+    .cell-content {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+    }
+
+    .alias-pill {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: transparent;
+      border: 1px solid #e0e0e0;
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-size: 11px;
+      color: var(--fg);
+      min-width: 0;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    body.dark .alias-pill {
+      border-color: #444;
+      background: #252525;
+    }
+
+    .alias-pill:hover { border-color: var(--accent); background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    body.dark .alias-pill:hover { background: #333; }
+
+    .picker-option.selected { background: var(--accent-soft); color: var(--accent); font-weight: 600; border-left: 3px solid var(--accent); padding-left: 9px; }
+
+    .alias-name {
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-weight: 500;
+      color: inherit;
+    }
+
+    .alias-icon {
+      width: 12px;
+      height: 12px;
+      opacity: 0.5;
+    }
+
+    .link-btn {
+      padding: 4px;
+      border-radius: 4px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      transition: all 0.2s;
+      flex-shrink: 0;
+      opacity: 0.4;
+    }
+
+    .link-btn:hover { background: var(--accent-soft); color: var(--accent); opacity: 1; }
+
+    /* Variable Picker Dropdown */
+    .picker-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.1);
+      z-index: 100;
+      display: none;
+    }
+
+    .variable-picker {
+      position: absolute;
+      width: 260px;
+      max-height: 400px;
+      background: var(--bg);
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      border: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      z-index: 101;
+    }
+
+    body.dark .variable-picker {
+      background: #2c2c2c;
+      border-color: #444;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+
+    .picker-header {
+      padding: 12px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: none;
+    }
+
+    .picker-title {
+      font-weight: 700;
+      font-size: 13px;
+      color: var(--fg);
+    }
+
+    .picker-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .picker-icon-btn {
+      cursor: pointer;
+      opacity: 0.6;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--fg);
+    }
+    .picker-icon-btn:hover { opacity: 1; }
+
+    .picker-search {
+      padding: 0 12px 12px;
+      background: transparent;
+    }
+
+    .picker-search-container {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .picker-search-icon {
+      position: absolute;
+      left: 10px;
+      width: 14px;
+      height: 14px;
+      opacity: 0.5;
+      pointer-events: none;
+    }
+
+    .picker-search input {
+      width: 100%;
+      border: 1px solid var(--border);
+      padding: 8px 10px 8px 32px;
+      border-radius: 6px;
+      font-size: 12px;
+      outline: none;
+      background: var(--bg);
+      color: var(--fg);
+      border: 1px solid #18A0FB;
+    }
+
+    body.dark .picker-search input {
+      background: #1e1e1e;
+      border-color: #18A0FB;
+      color: #fff;
+    }
+
+    .picker-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 4px 0;
+      background: var(--bg);
+    }
+
+    body.dark .picker-list {
+      background: #2c2c2c;
+    }
+
+    .font-picker-item {
+      padding: 10px 16px;
+      cursor: pointer;
+      font-size: 14px;
+      color: var(--fg);
+      transition: background 0.1s;
+    }
+    .font-picker-item:hover { background: rgba(128,128,128,0.1); }
+    body.dark .font-picker-item:hover { background: rgba(255,255,255,0.1); }
+    body.dark .font-picker-item { color: #fff; }
+
+    .picker-option {
+      padding: 8px 12px;
+      font-size: 11px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--fg);
+    }
+
+    .picker-option:hover { background: var(--accent-soft); color: var(--accent); }
+    .picker-option.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+    
+    .picker-group-title {
+      padding: 8px 12px 4px;
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .color-swatch-picker {
+      width: 20px;
+      height: 20px;
+      border-radius: 4px;
+      border: 1px solid rgba(0,0,0,0.1);
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      flex-shrink: 0;
+      background-image: conic-gradient(#eee 0.25turn, #fff 0.25turn 0.5turn, #eee 0.5turn 0.75turn, #fff 0.75turn);
+      background-size: 6px 6px;
+    }
+
+    .color-opacity-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+      padding: 0;
+      border-radius: 4px;
+    }
+
+    .opacity-separator {
+      width: 1px;
+      height: 12px;
+      background: var(--border);
+      margin: 0 2px;
+    }
+
+    .opacity-value {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      font-weight: 500;
+      color: var(--fg);
+      font-size: 11px;
+    }
+
+    .color-input-native {
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      cursor: pointer;
+      padding: 0;
+      border: none;
+      opacity: 0;
+    }
+
+    .type-icon {
+      width: 20px;
+      height: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      font-size: 10px;
+      font-weight: 800;
+      color: #555;
+      flex-shrink: 0;
+    }
+
+    .alias-pill .type-icon {
+      width: 14px;
+      height: 14px;
+      opacity: 0.7;
+    }
+
+    svg { width: 16px; height: 16px; stroke: currentColor; stroke-width: 2.5; fill: none; }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 6px 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    .btn-primary:hover:not(:disabled) { filter: brightness(1.05); }
+    .btn-primary:disabled { background: #d0d0d0; color: #888; cursor: not-allowed; }
+
+    .progress-track { height: 4px; background: #eee; border-radius: 2px; overflow: hidden; display: none; margin-bottom: 0; position: absolute; bottom: -1px; left: 0; right: 0; }
+    .progress-fill { height: 100%; background: var(--accent); width: 0%; transition: width 0.4s; }
+
+    .status-msg { font-size: 10px; font-weight: 500; color: var(--muted); }
+
+    svg { width: 16px; height: 16px; stroke: currentColor; stroke-width: 2.5; fill: none; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div class="status-msg" id="status-msg">Ready</div>
+        <div id="duplicate-notice" class="notice-box" style="display: none; margin: 0; padding: 0; border: none; background: transparent; color: var(--error); font-size: 11px; align-items: center; gap: 6px;">
+          <svg viewBox="0 0 24 24" style="width: 14px; height: 14px;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+          Already exists in Figma
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <div id="theme-toggle" class="theme-toggle" title="Toggle Dark Mode">
+          <svg viewBox="0 0 24 24" style="width:16px; height:16px;"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" stroke="currentColor" stroke-width="2.5"></path></svg>
+        </div>
+        <button class="btn-primary" id="action-btn">Load Library for Review</button>
+        <div class="progress-track" id="progress-track" style="position: absolute; bottom: 0; left: 0; width: 100%; height: 2px; display: none; margin: 0;"><div class="progress-fill" id="progress-fill"></div></div>
+      </div>
+    </header>
+
+    <div class="content-split">
+      <aside class="sidebar">
+        <div class="sidebar-label">Collections</div>
+        <div id="collection-list" class="sidebar-list-container"></div>
+        
+        <div id="group-sidebar" class="group-sidebar" style="display: none;">
+          <div id="group-list" class="group-list-container"></div>
+        </div>
+      </aside>
+
+      <main class="main-view">
+        <div class="view-header" style="position: relative;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <span class="view-title" id="view-title">Select a collection</span>
+            <span id="token-total" style="font-size: 11px; color: var(--muted);">0 tokens</span>
+          </div>
+        </div>
+        <div class="table-container" id="table-container">
+          <div style="padding: 60px 24px; text-align: center; color: var(--muted);">
+            <svg viewBox="0 0 24 24" style="width: 32px; height: 32px; margin-bottom: 12px; opacity: 0.2; display: inline-block;"><path d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+            <div>Click "Load Library" to preview content</div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+  </div>
+
+  <div id="picker-overlay" class="picker-overlay" onclick="hidePicker()">
+    <div class="variable-picker" id="variable-picker" onclick="event.stopPropagation()">
+      <div class="picker-header">
+        <span class="picker-title" id="picker-title">Google Fonts</span>
+      </div>
+      <div class="picker-search">
+        <div class="picker-search-container">
+          <svg class="picker-search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="2.5"></circle><path d="M21 21l-4.35-4.35" stroke="currentColor" stroke-width="2.5"></path></svg>
+          <input type="text" id="picker-search-input" placeholder="Search fonts" oninput="filterPickerResults(this.value)">
+        </div>
+      </div>
+      <div class="picker-list" id="picker-list"></div>
+    </div>
+  </div>
+
+  <!-- Custom Color Picker -->
+  <div id="color-picker-modal" class="color-picker-modal" onclick="event.stopPropagation()">
+    <div class="cp-header">
+      <div class="cp-tabs">
+        <span class="cp-tab active">Custom</span>
+        <span class="cp-tab">Libraries</span>
+      </div>
+      <span class="cp-close" onclick="hideColorPicker()">
+        <svg viewBox="0 0 24 24" style="width:14px;height:14px;"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2.5"></path></svg>
+      </span>
+    </div>
+    
+    <div class="cp-sat-val" id="cp-sat-val">
+      <div class="cp-sat-val-white">
+        <div class="cp-sat-val-black"></div>
+      </div>
+      <div class="cp-cursor" id="cp-cursor"></div>
+    </div>
+
+    <div class="cp-sliders">
+      <div class="cp-slider-row">
+        <div class="cp-slider-label" id="cp-hue-label">Hue 0°</div>
+        <input type="range" class="cp-hue-slider" id="cp-hue" min="0" max="360" step="1" value="0">
+      </div>
+      <div class="cp-slider-row">
+        <div class="cp-slider-label" id="cp-alpha-label">Opacity 100%</div>
+        <input type="range" class="cp-alpha-slider" id="cp-alpha" min="0" max="100" step="1" value="100">
+      </div>
+    </div>
+
+    <div class="cp-inputs">
+      <span class="cp-unlink-btn" id="cp-unlink-btn" title="Unlink" onclick="handleCPUnlink()">
+        <svg viewBox="0 0 24 24" style="width:14px;height:14px;"><path d="M18.84 15.16l1.16-1.16a5 5 0 0 0-7.07-7.07l-1.16 1.16M14 11l-4 4M5.16 8.84L4 10a5 5 0 0 0 7.07 7.07l1.16-1.16M2 2l20 20" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"></path></svg>
+      </span>
+      <select class="cp-select" id="cp-mode-select">
+        <option value="HSL">HSL</option>
+        <option value="RGB">RGB</option>
+        <option value="HEX">Hex</option>
+      </select>
+      <div id="cp-input-container" style="display: flex; gap: 4px; flex: 1;">
+        <!-- Inputs will be dynamically generated based on mode -->
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const statusMsg = document.getElementById('status-msg');
+    const progressFill = document.getElementById('progress-fill');
+    const progressTrack = document.getElementById('progress-track');
+    const actionBtn = document.getElementById('action-btn');
+    const collectionList = document.getElementById('collection-list');
+    const groupList = document.getElementById('group-list');
+    const groupSidebar = document.getElementById('group-sidebar');
+    const tableContainer = document.getElementById('table-container');
+    const viewTitle = document.getElementById('view-title');
+    const tokenTotal = document.getElementById('token-total');
+    const duplicateNotice = document.getElementById('duplicate-notice');
+    const selectionCount = document.getElementById('selection-count');
+    
+    let modesData = null;
+    let primitivesData = null;
+    let modesExist = false;
+    let primitivesExist = false;
+    let activeCollection = null; // 'modes' | 'primitives'
+    let activeGroupPath = 'All';
+    let state = 'init';
+    let collapsedGroups = new Set();
+
+    // Undo/Redo State
+    let history = [];
+    let historyIndex = -1;
+    const MAX_HISTORY = 50;
+
+    function saveToHistory() {
+      // Remove any redo history
+      if (historyIndex < history.length - 1) {
+        history = history.slice(0, historyIndex + 1);
+      }
+      
+      const snapshot = JSON.parse(JSON.stringify({
+        modesData,
+        primitivesData,
+        activeCollection,
+        activeGroupPath
+      }));
+      
+      history.push(snapshot);
+      if (history.length > MAX_HISTORY) history.shift();
+      else historyIndex++;
+    }
+
+    function undo() {
+      if (historyIndex > 0) {
+        historyIndex--;
+        applyHistoryState(history[historyIndex]);
+      }
+    }
+
+    function redo() {
+      if (historyIndex < history.length - 1) {
+        historyIndex++;
+        applyHistoryState(history[historyIndex]);
+      }
+    }
+
+    function applyHistoryState(stateObj) {
+      modesData = stateObj.modesData;
+      primitivesData = stateObj.primitivesData;
+      activeCollection = stateObj.activeCollection;
+      activeGroupPath = stateObj.activeGroupPath;
+      
+      renderSidebar();
+      const data = activeCollection === 'modes' ? modesData : primitivesData;
+      if (data) {
+        viewTitle.textContent = data.name;
+        renderTable(data);
+      }
+    }
+
+    // Keyboard Shortcuts
+    window.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        if (e.shiftKey) redo();
+        else undo();
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+        redo();
+      }
+    });
+
+    // Dark Mode Toggle
+    let themeLock = false;
+    const themeToggle = document.getElementById('theme-toggle');
+    themeToggle.removeAttribute('title'); // Remove tooltip
+    themeToggle.onclick = (event) => {
+      if (themeLock) return;
+      themeLock = true;
+      
+      const x = event.clientX;
+      const y = event.clientY;
+      const isDark = document.body.classList.contains('dark');
+      
+      const toggleTheme = () => {
+        document.body.classList.toggle('dark');
+        const nowDark = document.body.classList.contains('dark');
+        themeToggle.innerHTML = nowDark 
+          ? '<svg viewBox="0 0 24 24" style="width:16px; height:16px;"><circle cx="12" cy="12" r="5" stroke="currentColor" stroke-width="2.5"></circle><line x1="12" y1="1" x2="12" y2="3" stroke="currentColor" stroke-width="2.5"></line><line x1="12" y1="21" x2="12" y2="23" stroke="currentColor" stroke-width="2.5"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" stroke="currentColor" stroke-width="2.5"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" stroke="currentColor" stroke-width="2.5"></line><line x1="1" y1="12" x2="3" y2="12" stroke="currentColor" stroke-width="2.5"></line><line x1="21" y1="12" x2="23" y2="12" stroke="currentColor" stroke-width="2.5"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" stroke="currentColor" stroke-width="2.5"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" stroke="currentColor" stroke-width="2.5"></line></svg>'
+          : '<svg viewBox="0 0 24 24" style="width:16px; height:16px;"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" stroke="currentColor" stroke-width="2.5"></path></svg>';
+      };
+
+      if (document.startViewTransition) {
+        document.documentElement.style.setProperty("--ripple-x", `${x}px`);
+        document.documentElement.style.setProperty("--ripple-y", `${y}px`);
+        const transition = document.startViewTransition(toggleTheme);
+        transition.finished.finally(() => { themeLock = false; });
+      } else {
+        const ripple = document.createElement('div');
+        ripple.className = 'theme-ripple-circle theme-ripple-animate';
+        ripple.style.setProperty("--ripple-x", `${x}px`);
+        ripple.style.setProperty("--ripple-y", `${y}px`);
+        // New theme color
+        ripple.style.background = isDark ? '#ffffff' : '#1e1e1e';
+        document.body.appendChild(ripple);
+        
+        setTimeout(() => {
+          toggleTheme();
+          setTimeout(() => {
+            ripple.remove();
+            themeLock = false;
+          }, 800);
+        }, 50);
+      }
+    };
+
+    parent.postMessage({ pluginMessage: { type: 'check-collections' } }, '*');
+
+    function updateStatus(text, success = false) {
+      statusMsg.textContent = text;
+      if (success) {
+        setTimeout(() => {
+          statusMsg.textContent = 'Ready';
+          progressTrack.style.display = 'none';
+          progressFill.style.width = '0%';
+        }, 3000);
+      }
+    }
+
+    actionBtn.onclick = () => {
+      if (state === 'init') {
+        updateStatus('Fetching library data...');
+        parent.postMessage({ pluginMessage: { type: 'request-token-data' } }, '*');
+      } else {
+        progressTrack.style.display = 'block';
+        progressFill.style.width = '40%';
+        updateStatus('Syncing to Figma...');
+        
+        const saveEdits = (data) => {
+          data.variables.forEach(v => {
+            // Update name (leaf only in UI, but we should restore full path if it was there)
+            const nameInput = document.getElementById(`in-${v.id}`);
+            if (nameInput) {
+              const parts = v.name.split('/');
+              if (parts.length > 1) {
+                parts[parts.length - 1] = nameInput.value;
+                v.name = parts.join('/');
+              } else {
+                v.name = nameInput.value;
+              }
+            }
+
+            // Update mode values
+            Object.keys(data.modes).forEach(mId => {
+              const valInput = document.getElementById(`val-${v.id}-${mId}`);
+              if (valInput) {
+                let newVal = valInput.value;
+                
+                // Basic type casting
+                if (v.type === 'FLOAT') {
+                  v.valuesByMode[mId] = parseFloat(newVal);
+                } else if (v.type === 'COLOR' && v.valuesByMode[mId]?.r !== undefined) {
+                  // If it's a hex string, we might need complex conversion, 
+                  // but for now we'll assume they edit the stringified RGBA or hex
+                  // Simple support for hex if needed, but let's stick to text for raw edits
+                  try {
+                    if (newVal.startsWith('#')) {
+                      // Simple hex to rgb logic
+                      const r = parseInt(newVal.slice(1,3), 16) / 255;
+                      const g = parseInt(newVal.slice(3,5), 16) / 255;
+                      const b = parseInt(newVal.slice(5,7), 16) / 255;
+                      v.valuesByMode[mId] = { r, g, b, a: 1 };
+                    } else {
+                      v.valuesByMode[mId] = JSON.parse(newVal);
+                    }
+                  } catch(e) { v.valuesByMode[mId] = newVal; }
+                } else {
+                  v.valuesByMode[mId] = newVal;
+                }
+              }
+            });
+          });
+        };
+        
+        saveEdits(modesData);
+        saveEdits(primitivesData);
+
+        parent.postMessage({ 
+          pluginMessage: { 
+            type: 'request-import',
+            data: { modesData, primitivesData }
+          } 
+        }, '*');
+      }
+    };
+
+    window.onmessage = (event) => {
+      const msg = event.data.pluginMessage;
+      
+      if (msg.type === 'collections-status') {
+        modesExist = msg.modesExist;
+        primitivesExist = msg.primitivesExist;
+        modesData = msg.preview.modes;
+        primitivesData = msg.preview.primitives;
+        
+        renderSidebar();
+        
+        if (modesExist && primitivesExist) {
+          actionBtn.disabled = true;
+        } else {
+          actionBtn.disabled = false;
+        }
+      }
+
+      if (msg.type === 'token-data-response') {
+        modesData = msg.modes;
+        primitivesData = msg.primitives;
+        state = 'sync';
+        actionBtn.textContent = 'Sync to Variables';
+        actionBtn.disabled = false;
+        
+        selectCollection('primitives');
+        updateStatus('Review content before syncing');
+      }
+
+      if (msg.type === 'status-update') {
+        progressFill.style.width = '100%';
+        updateStatus(msg.message, true);
+        state = 'init';
+        actionBtn.textContent = 'Load Library for Review';
+        parent.postMessage({ pluginMessage: { type: 'check-collections' } }, '*');
+      }
+
+      if (msg.type === 'selection-change') {
+        selectionCount.textContent = `${msg.count} selected`;
+      }
+    };
+
+    function renderSidebar() {
+      collectionList.innerHTML = '';
+      const items = [
+        { id: 'primitives', name: 'Primitives', exists: primitivesExist, count: primitivesData ? primitivesData.variables.length : 0 },
+        { id: 'modes', name: 'Modes (Desktop / Mobile)', exists: modesExist, count: modesData ? modesData.variables.length : 0 }
+      ];
+
+      items.forEach(item => {
+        const el = document.createElement('div');
+        el.className = `collection-item ${activeCollection === item.id ? 'active' : ''}`;
+        el.innerHTML = `
+          <div style="display: flex; flex-direction: column; flex: 1;">
+            <span style="font-size: 12px;">${item.name}</span>
+          </div>
+          <span style="font-size: 11px; color: var(--muted); opacity: 0.8;">${item.count}</span>
+        `;
+        el.onclick = () => selectCollection(item.id);
+        collectionList.appendChild(el);
+      });
+
+      if (activeCollection) {
+        groupSidebar.style.display = 'block';
+        renderGroups();
+      } else {
+        groupSidebar.style.display = 'none';
+      }
+    }
+
+    function buildHierarchy(variables) {
+      const root = { name: 'All', count: variables.length, children: {} };
+      
+      variables.forEach(v => {
+        const parts = v.name.split('/');
+        let current = root;
+        
+        for (let i = 0; i < parts.length - 1; i++) {
+          const part = parts[i];
+          if (!current.children[part]) {
+            current.children[part] = { name: part, count: 0, children: {} };
+          }
+          current.children[part].count++;
+          current = current.children[part];
+        }
+      });
+      
+      return root;
+    }
+
+    function renderGroups() {
+      groupList.innerHTML = '';
+      const data = activeCollection === 'modes' ? modesData : primitivesData;
+      if (!data) return;
+
+      const hierarchy = buildHierarchy(data.variables);
+      
+      const renderNode = (node, container, path = '', level = 0) => {
+        const fullPath = path ? `${path}/${node.name}` : node.name;
+        const isAll = node.name === 'All';
+        const displayPath = isAll ? 'All' : fullPath.replace('All/', '');
+        
+        const itemEl = document.createElement('div');
+        const hasChildren = Object.keys(node.children).length > 0;
+        const isCollapsed = collapsedGroups.has(displayPath);
+        
+        itemEl.className = `group-item ${activeGroupPath === displayPath ? 'active' : ''} ${isCollapsed ? 'collapsed' : ''}`;
+        
+        let indent = '';
+        for(let i=0; i<level; i++) indent += '<div class="group-indent"></div>';
+
+        itemEl.innerHTML = `
+          ${indent}
+          ${hasChildren ? '<svg class="group-arrow" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" stroke-width="3"></path></svg>' : '<div class="group-indent"></div>'}
+          <span class="group-title" style="${isAll ? 'font-weight: 800;' : ''}">${node.name}</span>
+          <span class="group-count">${node.count}</span>
+        `;
+
+        itemEl.onclick = (e) => {
+          if (hasChildren) {
+            const childrenContainer = itemEl.nextElementSibling;
+            if (isCollapsed) {
+              collapsedGroups.delete(displayPath);
+              itemEl.classList.remove('collapsed');
+              if (childrenContainer) {
+                childrenContainer.style.display = 'block';
+                const height = childrenContainer.scrollHeight;
+                childrenContainer.style.height = '0px';
+                childrenContainer.offsetHeight; // force reflow
+                childrenContainer.style.height = height + 'px';
+                setTimeout(() => { childrenContainer.style.height = 'auto'; }, 300);
+              }
+            } else {
+              collapsedGroups.add(displayPath);
+              itemEl.classList.add('collapsed');
+              if (childrenContainer) {
+                childrenContainer.style.height = childrenContainer.scrollHeight + 'px';
+                childrenContainer.offsetHeight; // force reflow
+                childrenContainer.style.height = '0px';
+                setTimeout(() => { childrenContainer.style.display = 'none'; }, 300);
+              }
+            }
+          }
+          selectGroup(displayPath);
+        };
+
+        container.appendChild(itemEl);
+
+        if (hasChildren) {
+          const childrenContainer = document.createElement('div');
+          childrenContainer.className = 'group-children';
+          childrenContainer.style.display = isCollapsed ? 'none' : 'block';
+          container.appendChild(childrenContainer);
+
+          const sortedChildren = Object.keys(node.children).sort();
+          sortedChildren.forEach(childName => {
+            renderNode(node.children[childName], childrenContainer, fullPath, level + 1);
+          });
+        }
+      };
+
+      renderNode(hierarchy, groupList);
+    }
+
+    function selectGroup(path) {
+      activeGroupPath = path;
+      renderGroups();
+      const data = activeCollection === 'modes' ? modesData : primitivesData;
+      renderTable(data);
+    }
+
+    function selectCollection(id) {
+      const listContainer = document.querySelector('.sidebar-list-container');
+      listContainer.style.opacity = '0';
+      
+      setTimeout(() => {
+        activeCollection = id;
+        activeGroupPath = 'All';
+        collapsedGroups.clear();
+        renderSidebar();
+        
+        const data = id === 'modes' ? modesData : primitivesData;
+        const exists = id === 'modes' ? modesExist : primitivesExist;
+        
+        viewTitle.textContent = data.name;
+        duplicateNotice.style.display = exists ? 'flex' : 'none';
+        
+        if (state === 'sync') {
+          renderTable(data);
+        }
+        listContainer.style.opacity = '1';
+      }, 200);
+    }
+
+    function renderTable(data) {
+      const modeKeys = Object.keys(data.modes);
+      const modeNames = Object.values(data.modes);
+      
+      const filteredVars = activeGroupPath === 'All' 
+        ? data.variables 
+        : data.variables.filter(v => v.name.startsWith(activeGroupPath + '/'));
+
+      tokenTotal.textContent = `${filteredVars.length} tokens`;
+
+      let html = `
+        <table>
+          <thead>
+            <tr>
+              <th class="col-name">Name</th>
+              ${modeNames.map(name => `<th class="col-mode">${name}</th>`).join('')}
+              <th class="col-empty"></th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+
+      const hexagonIcon = '<svg viewBox="0 0 24 24" style="width:14px;height:14px;opacity:0.6;"><path d="M12 2l8.66 5v10L12 22l-8.66-5V7z" fill="none" stroke="currentColor" stroke-width="2.5"></path><circle cx="12" cy="12" r="3" fill="currentColor"></circle></svg>';
+      const unlinkIcon = '<svg viewBox="0 0 24 24" style="width:14px;height:14px;"><path d="M18.84 15.16l1.16-1.16a5 5 0 0 0-7.07-7.07l-1.16 1.16M14 11l-4 4M5.16 8.84L4 10a5 5 0 0 0 7.07 7.07l1.16-1.16M2 2l20 20" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"></path></svg>';
+
+      function getTypeIcon(symbol, size = 20) {
+        return `
+          <div class="type-icon" style="width:${size}px; height:${size}px; position:relative;">
+            <svg viewBox="0 0 24 24" style="width:100%; height:100%; position:absolute; top:0; left:0;">
+              <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="2.5"></rect>
+            </svg>
+            <span style="position:relative; z-index:1; font-size:${size * 0.5}px;">${symbol}</span>
+          </div>
+        `;
+      }
+
+      filteredVars.forEach(v => {
+        const parts = v.name.split('/');
+        const leafName = parts[parts.length - 1];
+        const normalizedLeaf = leafName.toLowerCase().replace(/[-_]/g, ' ');
+        const isFontFamily = normalizedLeaf.includes('font family');
+        const isFontWeight = normalizedLeaf.includes('font weight');
+        
+        let typeSymbol = '#';
+        if (v.type === 'COLOR') typeSymbol = '◐';
+        if (v.type === 'STRING') typeSymbol = 'T';
+        if (v.type === 'BOOLEAN') typeSymbol = 'B';
+
+        html += `
+          <tr>
+            <td onclick="focusInput('in-${v.id}')">
+              <div class="cell-content">
+                ${getTypeIcon(typeSymbol)}
+                <input type="text" class="table-input" id="in-${v.id}" value="${leafName}" placeholder="Variable Name" 
+                  onblur="updateVariableName('${v.id}', this.value)" onkeydown="if(event.key==='Enter') this.blur()">
+              </div>
+            </td>
+            ${modeKeys.map(mId => {
+              const val = v.valuesByMode[mId];
+              const resolved = v.resolvedValuesByMode?.[mId];
+              
+              if (val && typeof val === 'object' && val.type === 'VARIABLE_ALIAS') {
+                // Alias UI
+                const aliasName = resolved?.aliasName || 'Unknown Alias';
+                const aliasParts = aliasName.split('/');
+                const displayAlias = aliasParts.length > 1 
+                  ? `...${aliasParts[aliasParts.length-2]}/${aliasParts[aliasParts.length-1]}`
+                  : aliasName;
+
+                return `
+                  <td>
+                    <div class="cell-content">
+                      <div class="alias-pill" title="${aliasName}" onclick="showPicker('${v.id}', '${mId}', event)">
+                        ${getTypeIcon(typeSymbol, 12)}
+                        <span class="alias-name">${displayAlias}</span>
+                      </div>
+                      <div class="link-btn" title="Unlink" onclick="unlinkAlias('${v.id}', '${mId}')">
+                        ${unlinkIcon}
+                      </div>
+                    </div>
+                  </td>
+                `;
+              }
+
+              if (v.type === 'COLOR') {
+                const color = val || { r: 0, g: 0, b: 0, a: 1 };
+                const hex = color.r !== undefined ? 
+                  `#${Math.round(color.r * 255).toString(16).padStart(2, '0')}${Math.round(color.g * 255).toString(16).padStart(2, '0')}${Math.round(color.b * 255).toString(16).padStart(2, '0')}`.toUpperCase() : 
+                  (typeof val === 'string' ? val : '#000000');
+                
+                const alpha = color.a !== undefined ? color.a : 1;
+                const opacityPercent = Math.round(alpha * 100);
+
+                if (alpha < 1) {
+                  return `
+                    <td onclick="openColorPicker('${v.id}', '${mId}', event)">
+                      <div class="cell-content">
+                        <div class="color-opacity-row">
+                          <div class="color-swatch-picker" style="background-color: rgba(${color.r*255},${color.g*255},${color.b*255},${alpha})"></div>
+                          <span style="font-weight:500; font-size:11px; color:var(--fg); line-height:1;" class="themed-text">${hex.slice(1)}</span>
+                          <div class="opacity-separator"></div>
+                          <div class="opacity-value">
+                            <span class="themed-text">${opacityPercent}</span>
+                            <span style="opacity:0.5;" class="themed-text">%</span>
+                          </div>
+                        </div>
+                        <div class="link-btn" title="Link to Variable" onclick="showPicker('${v.id}', '${mId}', event); event.stopPropagation();">
+                          ${hexagonIcon}
+                        </div>
+                      </div>
+                    </td>
+                  `;
+                }
+
+                return `
+                  <td onclick="openColorPicker('${v.id}', '${mId}', event)">
+                    <div class="cell-content">
+                      <div class="color-swatch-picker" style="background-color: ${hex}"></div>
+                      <span class="table-input" style="flex:1;">${hex}</span>
+                      <div class="link-btn" title="Link to Variable" onclick="showPicker('${v.id}', '${mId}', event); event.stopPropagation();">
+                        ${hexagonIcon}
+                      </div>
+                    </div>
+                  </td>
+                `;
+              }
+
+              // Font specific UI
+              if (isFontFamily || isFontWeight) {
+                const displayVal = typeof val === 'object' ? JSON.stringify(val) : (val ?? '');
+                return `
+                  <td onclick="showFontPicker('${v.id}', '${mId}', '${isFontFamily ? 'family' : 'weight'}', event)">
+                    <div class="cell-content">
+                      <input type="text" class="table-input" id="val-${v.id}-${mId}" value="${displayVal}" readonly style="cursor: pointer;">
+                      <div class="link-btn" title="Link to Variable" onclick="showPicker('${v.id}', '${mId}', event); event.stopPropagation();">
+                        ${hexagonIcon}
+                      </div>
+                    </div>
+                  </td>
+                `;
+              }
+
+              // Default Text/Number input
+              const displayVal = typeof val === 'object' ? JSON.stringify(val) : (val ?? '');
+              return `
+                <td onclick="focusInput('val-${v.id}-${mId}')">
+                  <div class="cell-content">
+                    <input type="text" class="table-input" id="val-${v.id}-${mId}" value="${displayVal}" placeholder="Value"
+                      onblur="updateVariableValue('${v.id}', '${mId}', this.value)" onkeydown="if(event.key==='Enter') this.blur()">
+                    <div class="link-btn" title="Link to Variable" onclick="showPicker('${v.id}', '${mId}', event); event.stopPropagation();">
+                      ${hexagonIcon}
+                    </div>
+                  </div>
+                </td>
+              `;
+            }).join('')}
+            <td class="col-empty"></td>
+          </tr>
+        `;
+      });
+
+      html += '</tbody></table>';
+      tableContainer.innerHTML = html;
+    }
+
+    window.unlinkAlias = (vId, mId) => {
+      saveToHistory();
+      // Find the variable in our data and convert alias to its resolved value
+      const findVar = (data) => {
+        const v = data.variables.find(item => item.id === vId);
+        if (v && v.valuesByMode[mId]?.type === 'VARIABLE_ALIAS') {
+          const resolved = v.resolvedValuesByMode?.[mId]?.resolvedValue;
+          v.valuesByMode[mId] = resolved;
+          renderTable(data);
+        }
+      };
+      findVar(modesData);
+      findVar(primitivesData);
+    };
+
+    window.updateColorValue = (vId, mId, hex) => {
+      document.getElementById(`val-${vId}-${mId}`).value = hex.toUpperCase();
+      const picker = document.querySelector(`#val-${vId}-${mId}`).previousElementSibling;
+      picker.style.background = hex;
+    };
+
+    window.updateSwatch = (vId, mId, hex) => {
+      if (hex.match(/^#[0-9A-F]{6}$/i)) {
+        const picker = document.querySelector(`#val-${vId}-${mId}`).previousElementSibling;
+        if (picker) {
+          picker.style.background = hex;
+          const input = picker.querySelector('input');
+          if (input) input.value = hex;
+        }
+      }
+    };
+
+    window.focusInput = (id) => {
+      const input = document.getElementById(id);
+      if (input) {
+        input.focus();
+        // Move cursor to the right (end of text)
+        const val = input.value;
+        input.setSelectionRange(val.length, val.length);
+      }
+    };
+
+    // Color Picker State & Logic
+    let cpContext = null;
+    let cpColor = { h: 0, s: 100, l: 50, a: 1 };
+    const cpModal = document.getElementById('color-picker-modal');
+    const cpSatVal = document.getElementById('cp-sat-val');
+    const cpCursor = document.getElementById('cp-cursor');
+    const cpHue = document.getElementById('cp-hue');
+    const cpAlpha = document.getElementById('cp-alpha');
+    const cpHueLabel = document.getElementById('cp-hue-label');
+    const cpAlphaLabel = document.getElementById('cp-alpha-label');
+    const cpModeSelect = document.getElementById('cp-mode-select');
+    const cpInputContainer = document.getElementById('cp-input-container');
+
+    window.openColorPicker = (vId, mId, event) => {
+      cpContext = { vId, mId };
+      const targetVar = modesData.variables.find(v => v.id === vId) || primitivesData.variables.find(v => v.id === vId);
+      const val = targetVar.valuesByMode[mId] || { r: 0, g: 0, b: 0, a: 1 };
+      
+      // Convert RGB to HSL
+      const { r, g, b, a } = val;
+      cpColor = rgbToHsl(r, g, b, a);
+      
+      const rect = event.currentTarget.getBoundingClientRect();
+      cpModal.style.display = 'flex';
+      cpModal.style.top = `${Math.min(rect.bottom + 5, window.innerHeight - 350)}px`;
+      cpModal.style.left = `${Math.min(rect.left, window.innerWidth - 260)}px`;
+      
+      updateCPUI();
+    };
+
+    window.hideColorPicker = () => {
+      cpModal.style.display = 'none';
+      cpContext = null;
+    };
+
+    function updateCPUI() {
+      const { h, s, l, a } = cpColor;
+      cpSatVal.style.backgroundColor = `hsl(${h}, 100%, 50%)`;
+      
+      // Saturation/Lightness to X/Y (approximate for UI)
+      cpCursor.style.left = `${s}%`;
+      cpCursor.style.top = `${100 - l}%`;
+      
+      cpHue.value = h;
+      cpAlpha.value = a * 100;
+      
+      // Update labels
+      cpHueLabel.textContent = `Hue ${Math.round(h)}°`;
+      cpAlphaLabel.textContent = `Opacity ${Math.round(a * 100)}%`;
+      
+      // Update Alpha slider background
+      const rgb = hslToRgb(h, s, l);
+      const isDark = document.body.classList.contains('dark');
+      const c1 = isDark ? '#222' : '#eee';
+      const c2 = isDark ? '#333' : '#fff';
+      cpAlpha.style.color = `rgba(${rgb.r},${rgb.g},${rgb.b},1)`;
+      cpAlpha.style.backgroundImage = `linear-gradient(to right, rgba(${rgb.r},${rgb.g},${rgb.b},0), rgba(${rgb.r},${rgb.g},${rgb.b},1)), conic-gradient(${c1} 0.25turn, ${c2} 0.25turn 0.5turn, ${c1} 0.5turn 0.75turn, ${c2} 0.75turn)`;
+
+      renderCPInputs();
+    }
+
+    function renderCPInputs() {
+      const mode = cpModeSelect.value;
+      cpInputContainer.innerHTML = '';
+      const { h, s, l, a } = cpColor;
+      
+      const inputGroup = document.createElement('div');
+      inputGroup.className = 'cp-input-group';
+
+      if (mode === 'HSL') {
+        inputGroup.innerHTML = `
+          <input type="number" class="cp-input" value="${Math.round(h)}" oninput="updateCPColor('h', this.value)">
+          <input type="number" class="cp-input" value="${Math.round(s)}" oninput="updateCPColor('s', this.value)">
+          <input type="number" class="cp-input" value="${Math.round(l)}" oninput="updateCPColor('l', this.value)">
+          <input type="number" class="cp-input" value="${Math.round(a*100)}" oninput="updateCPColor('a', this.value/100)">
+          <span class="cp-input-percent">%</span>
+        `;
+      } else if (mode === 'RGB') {
+        const rgb = hslToRgb(h, s, l);
+        inputGroup.innerHTML = `
+          <input type="number" class="cp-input" value="${Math.round(rgb.r)}" oninput="updateCPRGB('r', this.value)">
+          <input type="number" class="cp-input" value="${Math.round(rgb.g)}" oninput="updateCPRGB('g', this.value)">
+          <input type="number" class="cp-input" value="${Math.round(rgb.b)}" oninput="updateCPRGB('b', this.value)">
+          <input type="number" class="cp-input" value="${Math.round(a*100)}" oninput="updateCPColor('a', this.value/100)">
+          <span class="cp-input-percent">%</span>
+        `;
+      } else {
+        const rgb = hslToRgb(h, s, l);
+        const hex = rgbToHex(rgb.r, rgb.g, rgb.b);
+        inputGroup.innerHTML = `
+          <input type="text" class="cp-input" style="flex: 2;" value="${hex}" oninput="updateCPHex(this.value)">
+          <input type="number" class="cp-input" value="${Math.round(a*100)}" oninput="updateCPColor('a', this.value/100)">
+          <span class="cp-input-percent">%</span>
+        `;
+      }
+      
+      cpInputContainer.appendChild(inputGroup);
+    }
+
+    window.handleCPUnlink = () => {
+      if (cpContext) {
+        unlinkAlias(cpContext.vId, cpContext.mId);
+        hideColorPicker();
+      }
+    };
+
+    window.updateCPColor = (key, val) => {
+      cpColor[key] = parseFloat(val);
+      updateCPUI();
+      applyCPColor();
+    };
+
+    window.updateCPRGB = (key, val) => {
+      const { h, s, l } = cpColor;
+      const rgb = hslToRgb(h, s, l);
+      rgb[key] = parseInt(val);
+      const newHsl = rgbToHsl(rgb.r/255, rgb.g/255, rgb.b/255, cpColor.a);
+      cpColor.h = newHsl.h;
+      cpColor.s = newHsl.s;
+      cpColor.l = newHsl.l;
+      updateCPUI();
+      applyCPColor();
+    };
+
+    window.updateCPHex = (hex) => {
+      if (hex.startsWith('#')) hex = hex.slice(1);
+      if (hex.length === 6) {
+        const r = parseInt(hex.slice(0, 2), 16);
+        const g = parseInt(hex.slice(2, 4), 16);
+        const b = parseInt(hex.slice(4, 6), 16);
+        const hsl = rgbToHsl(r/255, g/255, b/255, cpColor.a);
+        cpColor.h = hsl.h;
+        cpColor.s = hsl.s;
+        cpColor.l = hsl.l;
+        updateCPUI();
+        applyCPColor();
+      }
+    };
+
+    function applyCPColor() {
+      if (!cpContext) return;
+      const { vId, mId } = cpContext;
+      const rgb = hslToRgb(cpColor.h, cpColor.s, cpColor.l);
+      const val = { r: rgb.r/255, g: rgb.g/255, b: rgb.b/255, a: cpColor.a };
+      
+      const updateData = (data) => {
+        const v = data.variables.find(item => item.id === vId);
+        if (v) {
+          v.valuesByMode[mId] = val;
+          renderTable(data);
+        }
+      };
+      updateData(modesData);
+      updateData(primitivesData);
+    }
+
+    cpHue.oninput = (e) => updateCPColor('h', e.target.value);
+    cpAlpha.oninput = (e) => updateCPColor('a', e.target.value / 100);
+    cpModeSelect.onchange = () => renderCPInputs();
+
+    cpSatVal.onmousedown = (e) => {
+      const move = (ev) => {
+        const rect = cpSatVal.getBoundingClientRect();
+        let x = (ev.clientX - rect.left) / rect.width;
+        let y = (ev.clientY - rect.top) / rect.height;
+        x = Math.max(0, Math.min(1, x));
+        y = Math.max(0, Math.min(1, y));
+        cpColor.s = x * 100;
+        cpColor.l = (1 - y) * 100;
+        updateCPUI();
+        applyCPColor();
+      };
+      move(e);
+      window.onmousemove = move;
+      window.onmouseup = () => { window.onmousemove = null; window.onmouseup = null; };
+    };
+
+    // Color Helpers
+    function rgbToHsl(r, g, b, a) {
+      const max = Math.max(r, g, b), min = Math.min(r, g, b);
+      let h, s, l = (max + min) / 2;
+      if (max === min) { h = s = 0; } else {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        switch (max) {
+          case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+          case g: h = (b - r) / d + 2; break;
+          case b: h = (r - g) / d + 4; break;
+        }
+        h /= 6;
+      }
+      return { h: h * 360, s: s * 100, l: l * 100, a };
+    }
+
+    function hslToRgb(h, s, l) {
+      h /= 360; s /= 100; l /= 100;
+      let r, g, b;
+      if (s === 0) { r = g = b = l; } else {
+        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+        const p = 2 * l - q;
+        const hue2rgb = (t) => {
+          if (t < 0) t += 1; if (t > 1) t -= 1;
+          if (t < 1/6) return p + (q - p) * 6 * t;
+          if (t < 1/2) return q;
+          if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+          return p;
+        };
+        r = hue2rgb(h + 1/3); g = hue2rgb(h); b = hue2rgb(h - 1/3);
+      }
+      return { r: r * 255, g: g * 255, b: b * 255 };
+    }
+
+    function rgbToHex(r, g, b) {
+      const toHex = (n) => Math.round(n).toString(16).padStart(2, '0').toUpperCase();
+      return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+    }
+
+    window.updateVariableName = (vId, name) => {
+      saveToHistory();
+      const v = modesData.variables.find(item => item.id === vId) || primitivesData.variables.find(item => item.id === vId);
+      if (v) v.name = name;
+    };
+
+    window.updateVariableValue = (vId, mId, val) => {
+      saveToHistory();
+      const v = modesData.variables.find(item => item.id === vId) || primitivesData.variables.find(item => item.id === vId);
+      if (v) {
+        if (v.type === 'FLOAT') v.valuesByMode[mId] = parseFloat(val);
+        else v.valuesByMode[mId] = val;
+      }
+    };
+
+    // Variable Picker Logic
+    let currentPickerContext = null;
+    const pickerOverlay = document.getElementById('picker-overlay');
+    const pickerList = document.getElementById('picker-list');
+    const pickerSearchInput = document.getElementById('picker-search-input');
+
+    // Font Picker Logic
+    const GOOGLE_FONTS = [
+      { family: 'ABeeZee', weights: ['Regular', 'Italic'] },
+      { family: 'Abel', weights: ['Regular'] },
+      { family: 'Abhaya Libre', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold'] },
+      { family: 'Aboreto', weights: ['Regular'] },
+      { family: 'Abril Fatface', weights: ['Regular'] },
+      { family: 'Abyssinica SIL', weights: ['Regular'] },
+      { family: 'Aclonica', weights: ['Regular'] },
+      { family: 'Acme', weights: ['Regular'] },
+      { family: 'Actor', weights: ['Regular'] },
+      { family: 'Adamina', weights: ['Regular'] },
+      { family: 'Advent Pro', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Afacad', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic'] },
+      { family: 'Agbalumo', weights: ['Regular'] },
+      { family: 'Agdasar', weights: ['Regular'] },
+      { family: 'Aguafina Script', weights: ['Regular'] },
+      { family: 'Ahuacuatl', weights: ['Regular'] },
+      { family: 'Akaya Kanadaka', weights: ['Regular'] },
+      { family: 'Akaya Telivigala', weights: ['Regular'] },
+      { family: 'Akronim', weights: ['Regular'] },
+      { family: 'Akshar', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Aladin', weights: ['Regular'] },
+      { family: 'Alata', weights: ['Regular'] },
+      { family: 'Alatsi', weights: ['Regular'] },
+      { family: 'Albert Sans', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Aldrich', weights: ['Regular'] },
+      { family: 'Alef', weights: ['Regular', 'Bold'] },
+      { family: 'Alegreya', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Alegreya Sans', weights: ['Thin', 'Light', 'Regular', 'Medium', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'LightItalic', 'Italic', 'MediumItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Alegreya Sans SC', weights: ['Thin', 'Light', 'Regular', 'Medium', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'LightItalic', 'Italic', 'MediumItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Alegreya SC', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Aleo', weights: ['Light', 'Regular', 'Bold', 'LightItalic', 'Italic', 'BoldItalic'] },
+      { family: 'Alex Brush', weights: ['Regular'] },
+      { family: 'Alexandria', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Alfa Slab One', weights: ['Regular'] },
+      { family: 'Alice', weights: ['Regular'] },
+      { family: 'Alike', weights: ['Regular'] },
+      { family: 'Alike Angular', weights: ['Regular'] },
+      { family: 'Alkalami', weights: ['Regular'] },
+      { family: 'Alkatra', weights: ['Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Allan', weights: ['Regular', 'Bold'] },
+      { family: 'Allerta', weights: ['Regular'] },
+      { family: 'Allerta Stencil', weights: ['Regular'] },
+      { family: 'Allison', weights: ['Regular'] },
+      { family: 'Allura', weights: ['Regular'] },
+      { family: 'Almendra', weights: ['Regular', 'Bold', 'Italic', 'BoldItalic'] },
+      { family: 'Almendra Display', weights: ['Regular'] },
+      { family: 'Almendra SC', weights: ['Regular'] },
+      { family: 'Alumni Sans', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Alumni Sans Collegiate One', weights: ['Regular', 'Italic'] },
+      { family: 'Alumni Sans Pinstripe', weights: ['Regular', 'Italic'] },
+      { family: 'Amarante', weights: ['Regular'] },
+      { family: 'Amaranth', weights: ['Regular', 'Bold', 'Italic', 'BoldItalic'] },
+      { family: 'Amatic SC', weights: ['Regular', 'Bold'] },
+      { family: 'Amethysta', weights: ['Regular'] },
+      { family: 'Amiko', weights: ['Regular', 'SemiBold', 'Bold'] },
+      { family: 'Amiri', weights: ['Regular', 'Bold', 'Italic', 'BoldItalic'] },
+      { family: 'Amiri Quran', weights: ['Regular'] },
+      { family: 'Amita', weights: ['Regular', 'Bold'] },
+      { family: 'Anaheim', weights: ['Regular'] },
+      { family: 'Andada Pro', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Andika', weights: ['Regular', 'Bold', 'Italic', 'BoldItalic'] },
+      { family: 'Anek Bangla', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold'] },
+      { family: 'Anek Devanagari', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold'] },
+      { family: 'Anek Gujarati', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold'] },
+      { family: 'Anek Gurmukhi', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold'] },
+      { family: 'Anek Kannada', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold'] },
+      { family: 'Anek Latin', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold'] },
+      { family: 'Anek Malayalam', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold'] },
+      { family: 'Anek Odia', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold'] },
+      { family: 'Anek Tamil', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold'] },
+      { family: 'Anek Telugu', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold'] },
+      { family: 'Angkor', weights: ['Regular'] },
+      { family: 'Annie Use Your Telescope', weights: ['Regular'] },
+      { family: 'Anonymous Pro', weights: ['Regular', 'Bold', 'Italic', 'BoldItalic'] },
+      { family: 'Antic', weights: ['Regular'] },
+      { family: 'Antic Didone', weights: ['Regular'] },
+      { family: 'Antic Slab', weights: ['Regular'] },
+      { family: 'Anton', weights: ['Regular'] },
+      { family: 'Antonio', weights: ['Thin', 'Light', 'Regular', 'Bold'] },
+      { family: 'Anuphan', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Anywhere', weights: ['Regular'] },
+      { family: 'Arapey', weights: ['Regular', 'Italic'] },
+      { family: 'Arbutus', weights: ['Regular'] },
+      { family: 'Arbutus Slab', weights: ['Regular'] },
+      { family: 'Architects Daughter', weights: ['Regular'] },
+      { family: 'Archivo', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Archivo Black', weights: ['Regular'] },
+      { family: 'Archivo Narrow', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic'] },
+      { family: 'Are You Serious', weights: ['Regular'] },
+      { family: 'Arellano', weights: ['Regular'] },
+      { family: 'Aref Ruqaa', weights: ['Regular', 'Bold'] },
+      { family: 'Aref Ruqaa Ink', weights: ['Regular', 'Bold'] },
+      { family: 'Arima', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Arimo', weights: ['Regular', 'Bold', 'Italic', 'BoldItalic'] },
+      { family: 'Arizonia', weights: ['Regular'] },
+      { family: 'Armata', weights: ['Regular'] },
+      { family: 'Arsenal', weights: ['Regular', 'Bold', 'Italic', 'BoldItalic'] },
+      { family: 'Artifika', weights: ['Regular'] },
+      { family: 'Arvo', weights: ['Regular', 'Bold', 'Italic', 'BoldItalic'] },
+      { family: 'Arya', weights: ['Regular', 'Bold'] },
+      { family: 'Asap', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Asap Condensed', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Asar', weights: ['Regular'] },
+      { family: 'Asset', weights: ['Regular'] },
+      { family: 'Assistant', weights: ['ExtraLight', 'Light', 'Regular', 'SemiBold', 'Bold', 'ExtraBold'] },
+      { family: 'Astloch', weights: ['Regular', 'Bold'] },
+      { family: 'Asul', weights: ['Regular', 'Bold'] },
+      { family: 'Athiti', weights: ['ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Atkinson Hyperlegible', weights: ['Regular', 'Bold', 'Italic', 'BoldItalic'] },
+      { family: 'Atma', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Atomic Age', weights: ['Regular'] },
+      { family: 'Aubrey', weights: ['Regular'] },
+      { family: 'Audiowide', weights: ['Regular'] },
+      { family: 'Autour One', weights: ['Regular'] },
+      { family: 'Average', weights: ['Regular'] },
+      { family: 'Average Sans', weights: ['Regular'] },
+      { family: 'Averia Gruesa Libre', weights: ['Regular'] },
+      { family: 'Averia Libre', weights: ['Thin', 'Light', 'Regular', 'Bold', 'ThinItalic', 'LightItalic', 'Italic', 'BoldItalic'] },
+      { family: 'Averia Sans Libre', weights: ['Thin', 'Light', 'Regular', 'Bold', 'ThinItalic', 'LightItalic', 'Italic', 'BoldItalic'] },
+      { family: 'Averia Serif Libre', weights: ['Thin', 'Light', 'Regular', 'Bold', 'ThinItalic', 'LightItalic', 'Italic', 'BoldItalic'] },
+      { family: 'Azeret Mono', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'B612', weights: ['Regular', 'Bold', 'Italic', 'BoldItalic'] },
+      { family: 'B612 Mono', weights: ['Regular', 'Bold', 'Italic', 'BoldItalic'] },
+      { family: 'Bad Script', weights: ['Regular'] },
+      { family: 'Bahiana', weights: ['Regular'] },
+      { family: 'Bahianita', weights: ['Regular'] },
+      { family: 'Bai Jamjuree', weights: ['ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic'] },
+      { family: 'Bakbak One', weights: ['Regular'] },
+      { family: 'Baloo 2', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold'] },
+      { family: 'Baloo Bhai 2', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold'] },
+      { family: 'Baloo Bhaina 2', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold'] },
+      { family: 'Baloo Chettan 2', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold'] },
+      { family: 'Baloo Da 2', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold'] },
+      { family: 'Baloo Paaji 2', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold'] },
+      { family: 'Baloo Tamma 2', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold'] },
+      { family: 'Baloo Tammudu 2', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold'] },
+      { family: 'Baloo Thambi 2', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold'] },
+      { family: 'Balsamiq Sans', weights: ['Regular', 'Bold', 'Italic', 'BoldItalic'] },
+      { family: 'Balthazar', weights: ['Regular'] },
+      { family: 'Bangers', weights: ['Regular'] },
+      { family: 'Barlow', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Barlow Condensed', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Barlow Semi Condensed', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Barlow SemiCondensed', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Barriecito', weights: ['Regular'] },
+      { family: 'Barrio', weights: ['Regular'] },
+      { family: 'Basic', weights: ['Regular'] },
+      { family: 'Baskervville', weights: ['Regular', 'Italic'] },
+      { family: 'Battambang', weights: ['Regular', 'Bold'] },
+      { family: 'Baumans', weights: ['Regular'] },
+      { family: 'Bayon', weights: ['Regular'] },
+      { family: 'Be Vietnam Pro', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Beau Rivage', weights: ['Regular'] },
+      { family: 'Bebas Neue', weights: ['Regular'] },
+      { family: 'Belgrano', weights: ['Regular'] },
+      { family: 'Bellefair', weights: ['Regular'] },
+      { family: 'Belleza', weights: ['Regular'] },
+      { family: 'Bellota', weights: ['Light', 'Regular', 'Bold', 'LightItalic', 'Italic', 'BoldItalic'] },
+      { family: 'Bellota Text', weights: ['Light', 'Regular', 'Bold', 'LightItalic', 'Italic', 'BoldItalic'] },
+      { family: 'BenchNine', weights: ['Light', 'Regular', 'Bold'] },
+      { family: 'Bentham', weights: ['Regular'] },
+      { family: 'Berkshire Swash', weights: ['Regular'] },
+      { family: 'Besley', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Beth Ellen', weights: ['Regular'] },
+      { family: 'Bevan', weights: ['Regular'] },
+      { family: 'BhuTuka Expanded One', weights: ['Regular'] },
+      { family: 'Big Shoulders Display', weights: ['Thin', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Big Shoulders Inline Display', weights: ['Thin', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Big Shoulders Inline Text', weights: ['Thin', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Big Shoulders Stencil Display', weights: ['Thin', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Big Shoulders Stencil Text', weights: ['Thin', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Big Shoulders Text', weights: ['Thin', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Bigelow Rules', weights: ['Regular'] },
+      { family: 'Bigshot One', weights: ['Regular'] },
+      { family: 'Bilbo', weights: ['Regular'] },
+      { family: 'Bilbo Swash Caps', weights: ['Regular'] },
+      { family: 'BioRhyme', weights: ['ExtraLight', 'Light', 'Regular', 'Bold', 'ExtraBold'] },
+      { family: 'BioRhyme Expanded', weights: ['ExtraLight', 'Light', 'Regular', 'Bold', 'ExtraBold'] },
+      { family: 'Birthstone', weights: ['Regular'] },
+      { family: 'Birthstone Bounce', weights: ['Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Biryani', weights: ['ExtraLight', 'Light', 'Regular', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Bitter', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Black And White Picture', weights: ['Regular'] },
+      { family: 'Black Han Sans', weights: ['Regular'] },
+      { family: 'Black Ops One', weights: ['Regular'] },
+      { family: 'Blaka', weights: ['Regular'] },
+      { family: 'Blaka Hollow', weights: ['Regular'] },
+      { family: 'Blinker', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Bodoni Moda', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Bokor', weights: ['Regular'] },
+      { family: 'Bona Nova', weights: ['Regular', 'Italic', 'Bold'] },
+      { family: 'Bonbon', weights: ['Regular'] },
+      { family: 'Bonheur Royale', weights: ['Regular'] },
+      { family: 'Boogaloo', weights: ['Regular'] },
+      { family: 'Bowlby One', weights: ['Regular'] },
+      { family: 'Bowlby One SC', weights: ['Regular'] },
+      { family: 'Brawler', weights: ['Regular', 'Bold'] },
+      { family: 'Bree Serif', weights: ['Regular'] },
+      { family: 'Brygada 1918', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic'] },
+      { family: 'Bubblegum Sans', weights: ['Regular'] },
+      { family: 'Bubbler One', weights: ['Regular'] },
+      { family: 'Buda', weights: ['Light'] },
+      { family: 'Buenard', weights: ['Regular', 'Bold'] },
+      { family: 'Bungee', weights: ['Regular'] },
+      { family: 'Bungee Hairline', weights: ['Regular'] },
+      { family: 'Bungee Inline', weights: ['Regular'] },
+      { family: 'Bungee Outline', weights: ['Regular'] },
+      { family: 'Bungee Shade', weights: ['Regular'] },
+      { family: 'Butcherman', weights: ['Regular'] },
+      { family: 'Butterfly Kids', weights: ['Regular'] },
+      { family: 'Cabin', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic'] },
+      { family: 'Cabin Condensed', weights: ['Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Cabin Sketch', weights: ['Regular', 'Bold'] },
+      { family: 'Caesar Dressing', weights: ['Regular'] },
+      { family: 'Cagliostro', weights: ['Regular'] },
+      { family: 'Cairo', weights: ['ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'Black'] },
+      { family: 'Cairo Play', weights: ['ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'Black'] },
+      { family: 'Caladea', weights: ['Regular', 'Bold', 'Italic', 'BoldItalic'] },
+      { family: 'Calistoga', weights: ['Regular'] },
+      { family: 'Calligraffitti', weights: ['Regular'] },
+      { family: 'Cambay', weights: ['Regular', 'Bold', 'Italic', 'BoldItalic'] },
+      { family: 'Cambo', weights: ['Regular'] },
+      { family: 'Candal', weights: ['Regular'] },
+      { family: 'Cantarell', weights: ['Regular', 'Bold', 'Italic', 'BoldItalic'] },
+      { family: 'Cantata One', weights: ['Regular'] },
+      { family: 'Cantora One', weights: ['Regular'] },
+      { family: 'Capriola', weights: ['Regular'] },
+      { family: 'Caramel', weights: ['Regular'] },
+      { family: 'Carattere', weights: ['Regular'] },
+      { family: 'Cardo', weights: ['Regular', 'Bold', 'Italic'] },
+      { family: 'Carme', weights: ['Regular'] },
+      { family: 'Carrois Gothic', weights: ['Regular'] },
+      { family: 'Carrois Gothic SC', weights: ['Regular'] },
+      { family: 'Carter One', weights: ['Regular'] },
+      { family: 'Castoro', weights: ['Regular', 'Italic'] },
+      { family: 'Catamaran', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Caudex', weights: ['Regular', 'Bold', 'Italic', 'BoldItalic'] },
+      { family: 'Caveat', weights: ['Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Caveat Brush', weights: ['Regular'] },
+      { family: 'Cedarville Cursive', weights: ['Regular'] },
+      { family: 'Ceviche One', weights: ['Regular'] },
+      { family: 'Chakra Petch', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic'] },
+      { family: 'Changa', weights: ['ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold'] },
+      { family: 'Changa One', weights: ['Regular', 'Italic'] },
+      { family: 'Chango', weights: ['Regular'] },
+      { family: 'Charis SIL', weights: ['Regular', 'Bold', 'Italic', 'BoldItalic'] },
+      { family: 'Charm', weights: ['Regular', 'Bold'] },
+      { family: 'Charmonman', weights: ['Regular', 'Bold'] },
+      { family: 'Chau Philomene One', weights: ['Regular', 'Italic'] },
+      { family: 'Chela One', weights: ['Regular'] },
+      { family: 'Chelsea Market', weights: ['Regular'] },
+      { family: 'Chenla', weights: ['Regular'] },
+      { family: 'Cherish', weights: ['Regular'] },
+      { family: 'Cherry Cream Soda', weights: ['Regular'] },
+      { family: 'Cherry Swash', weights: ['Regular', 'Bold'] },
+      { family: 'Chewy', weights: ['Regular'] },
+      { family: 'Chicle', weights: ['Regular'] },
+      { family: 'Chilanka', weights: ['Regular'] },
+      { family: 'Chivo', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Chonburi', weights: ['Regular'] },
+      { family: 'Cinzel', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Cinzel Decorative', weights: ['Regular', 'Bold', 'Black'] },
+      { family: 'Clicker Script', weights: ['Regular'] },
+      { family: 'Coda', weights: ['Regular', 'ExtraBold'] },
+      { family: 'Coda Caption', weights: ['ExtraBold'] },
+      { family: 'Codystar', weights: ['Light', 'Regular'] },
+      { family: 'Coiny', weights: ['Regular'] },
+      { family: 'Combo', weights: ['Regular'] },
+      { family: 'Comfortaa', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Comforter', weights: ['Regular'] },
+      { family: 'Comforter Brush', weights: ['Regular'] },
+      { family: 'Comic Neue', weights: ['Light', 'Regular', 'Bold', 'LightItalic', 'Italic', 'BoldItalic'] },
+      { family: 'Coming Soon', weights: ['Regular'] },
+      { family: 'Commissioner', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Concert One', weights: ['Regular'] },
+      { family: 'Condiment', weights: ['Regular'] },
+      { family: 'Content', weights: ['Regular', 'Bold'] },
+      { family: 'Contrail One', weights: ['Regular'] },
+      { family: 'Convergence', weights: ['Regular'] },
+      { family: 'Cookie', weights: ['Regular'] },
+      { family: 'Copse', weights: ['Regular'] },
+      { family: 'Corben', weights: ['Regular', 'Bold'] },
+      { family: 'Corinthia', weights: ['Regular', 'Bold'] },
+      { family: 'Cormorant', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic'] },
+      { family: 'Cormorant Garamond', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic'] },
+      { family: 'Cormorant Infant', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic'] },
+      { family: 'Cormorant SC', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Cormorant Unicase', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Cormorant Upright', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Courgette', weights: ['Regular'] },
+      { family: 'Cousine', weights: ['Regular', 'Bold', 'Italic', 'BoldItalic'] },
+      { family: 'Coustard', weights: ['Regular', 'Black'] },
+      { family: 'Covered By Your Grace', weights: ['Regular'] },
+      { family: 'Crafty Girls', weights: ['Regular'] },
+      { family: 'Creepster', weights: ['Regular'] },
+      { family: 'Crete Round', weights: ['Regular', 'Italic'] },
+      { family: 'Crimson Pro', weights: ['ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Crimson Text', weights: ['Regular', 'SemiBold', 'Bold', 'Italic', 'SemiBoldItalic', 'BoldItalic'] },
+      { family: 'Croissant One', weights: ['Regular'] },
+      { family: 'Crushed', weights: ['Regular'] },
+      { family: 'Cuprum', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic'] },
+      { family: 'Cutive', weights: ['Regular'] },
+      { family: 'Cutive Mono', weights: ['Regular'] },
+      { family: 'Damion', weights: ['Regular'] },
+      { family: 'Dancing Script', weights: ['Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Dangrek', weights: ['Regular'] },
+      { family: 'Darker Grotesque', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'David Libre', weights: ['Regular', 'Medium', 'Bold'] },
+      { family: 'Dawning of a New Day', weights: ['Regular'] },
+      { family: 'Days One', weights: ['Regular'] },
+      { family: 'Dekko', weights: ['Regular'] },
+      { family: 'Delius', weights: ['Regular'] },
+      { family: 'Delius Swash Caps', weights: ['Regular'] },
+      { family: 'Delius Unicase', weights: ['Regular', 'Bold'] },
+      { family: 'Della Respira', weights: ['Regular'] },
+      { family: 'Denk One', weights: ['Regular'] },
+      { family: 'Devonshire', weights: ['Regular'] },
+      { family: 'Dhurjati', weights: ['Regular'] },
+      { family: 'Didact Gothic', weights: ['Regular'] },
+      { family: 'Diplomata', weights: ['Regular'] },
+      { family: 'Diplomata SC', weights: ['Regular'] },
+      { family: 'Do Hyeon', weights: ['Regular'] },
+      { family: 'Dokdo', weights: ['Regular'] },
+      { family: 'Domine', weights: ['Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Donegal One', weights: ['Regular'] },
+      { family: 'Doppio One', weights: ['Regular'] },
+      { family: 'Dorsa', weights: ['Regular'] },
+      { family: 'DotGothic16', weights: ['Regular'] },
+      { family: 'Dr Sugiyama', weights: ['Regular'] },
+      { family: 'Duru Sans', weights: ['Regular'] },
+      { family: 'Dynalight', weights: ['Regular'] },
+      { family: 'EB Garamond', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic'] },
+      { family: 'Eagle Lake', weights: ['Regular'] },
+      { family: 'Eater', weights: ['Regular'] },
+      { family: 'Economica', weights: ['Regular', 'Bold', 'Italic', 'BoldItalic'] },
+      { family: 'Eczar', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold'] },
+      { family: 'Edu NSW ACT Foundation', weights: ['Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Edu QLD Beginner', weights: ['Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Edu SA Beginner', weights: ['Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Edu TAS Beginner', weights: ['Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'El Messiri', weights: ['Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Electrolize', weights: ['Regular'] },
+      { family: 'Elsie', weights: ['Regular', 'Black'] },
+      { family: 'Elsie Swash Caps', weights: ['Regular', 'Black'] },
+      { family: 'Emblema One', weights: ['Regular'] },
+      { family: 'Emilys Candy', weights: ['Regular'] },
+      { family: 'Encode Sans', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Encode Sans Condensed', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Encode Sans Expanded', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Encode Sans Semi Condensed', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Encode Sans Semi Expanded', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Engagement', weights: ['Regular'] },
+      { family: 'Englebert', weights: ['Regular'] },
+      { family: 'Enriqueta', weights: ['Regular', 'Bold'] },
+      { family: 'Epilogue', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Erica One', weights: ['Regular'] },
+      { family: 'Esteban', weights: ['Regular'] },
+      { family: 'Estonia', weights: ['Regular'] },
+      { family: 'Euphoria Script', weights: ['Regular'] },
+      { family: 'Ewert', weights: ['Regular'] },
+      { family: 'Exo', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Exo 2', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Expletus Sans', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic'] },
+      { family: 'Explora', weights: ['Regular'] },
+      { family: 'Fahkwang', weights: ['ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic'] },
+      { family: 'Familjen Grotesk', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic'] },
+      { family: 'Fanwood Text', weights: ['Regular', 'Italic'] },
+      { family: 'Farro', weights: ['Light', 'Regular', 'Medium', 'Bold'] },
+      { family: 'Farsan', weights: ['Regular'] },
+      { family: 'Fascinate', weights: ['Regular'] },
+      { family: 'Fascinate Inline', weights: ['Regular'] },
+      { family: 'Faster One', weights: ['Regular'] },
+      { family: 'Fasthand', weights: ['Regular'] },
+      { family: 'Fauna One', weights: ['Regular'] },
+      { family: 'Faustina', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Federant', weights: ['Regular'] },
+      { family: 'Federo', weights: ['Regular'] },
+      { family: 'Felipa', weights: ['Regular'] },
+      { family: 'Ffenix', weights: ['Regular'] },
+      { family: 'Fira Code', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Fira Mono', weights: ['Regular', 'Medium', 'Bold'] },
+      { family: 'Fira Sans', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Fira Sans Condensed', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Fira Sans Extra Condensed', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Fjalla One', weights: ['Regular'] },
+      { family: 'Fjord One', weights: ['Regular'] },
+      { family: 'Flamenco', weights: ['Light', 'Regular'] },
+      { family: 'Flavors', weights: ['Regular'] },
+      { family: 'Fleur De Leah', weights: ['Regular'] },
+      { family: 'Flywheel', weights: ['Regular'] },
+      { family: 'Fondamento', weights: ['Regular', 'Italic'] },
+      { family: 'Fontdiner Swanky', weights: ['Regular'] },
+      { family: 'Forum', weights: ['Regular'] },
+      { family: 'Fragment Mono', weights: ['Regular', 'Italic'] },
+      { family: 'Francois One', weights: ['Regular'] },
+      { family: 'Frank Ruhl Libre', weights: ['Light', 'Regular', 'Medium', 'Bold', 'Black'] },
+      { family: 'Fraunces', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Freckle Face', weights: ['Regular'] },
+      { family: 'Fredericka the Great', weights: ['Regular'] },
+      { family: 'Fredoka', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Fredoka One', weights: ['Regular'] },
+      { family: 'Freehand', weights: ['Regular'] },
+      { family: 'Fresca', weights: ['Regular'] },
+      { family: 'Frijole', weights: ['Regular'] },
+      { family: 'Fructum', weights: ['Regular'] },
+      { family: 'Fugaz One', weights: ['Regular'] },
+      { family: 'Fuzzy Bubbles', weights: ['Regular', 'Bold'] },
+      { family: 'Gafata', weights: ['Regular'] },
+      { family: 'Galada', weights: ['Regular'] },
+      { family: 'Galdeano', weights: ['Regular'] },
+      { family: 'Galindo', weights: ['Regular'] },
+      { family: 'Gamja Flower', weights: ['Regular'] },
+      { family: 'Gantari', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Gayathri', weights: ['Thin', 'Regular', 'Bold'] },
+      { family: 'Gelasio', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic'] },
+      { family: 'Gemunu Libre', weights: ['ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold'] },
+      { family: 'Genos', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Gentium Book Plus', weights: ['Regular', 'Bold', 'Italic', 'BoldItalic'] },
+      { family: 'Gentium Plus', weights: ['Regular', 'Bold', 'Italic', 'BoldItalic'] },
+      { family: 'Geo', weights: ['Regular', 'Italic'] },
+      { family: 'Georama', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Geostar', weights: ['Regular'] },
+      { family: 'Geostar Fill', weights: ['Regular'] },
+      { family: 'Germania One', weights: ['Regular'] },
+      { family: 'Gideon Roman', weights: ['Regular'] },
+      { family: 'Gidugu', weights: ['Regular'] },
+      { family: 'Gilda Display', weights: ['Regular'] },
+      { family: 'Girassol', weights: ['Regular'] },
+      { family: 'Give You Glory', weights: ['Regular'] },
+      { family: 'Glass Antiqua', weights: ['Regular'] },
+      { family: 'Glegoo', weights: ['Regular', 'Bold'] },
+      { family: 'Gloria Hallelujah', weights: ['Regular'] },
+      { family: 'Glory', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Gluten', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Goblin One', weights: ['Regular'] },
+      { family: 'Gochi Hand', weights: ['Regular'] },
+      { family: 'Goldman', weights: ['Regular', 'Bold'] },
+      { family: 'Gorditas', weights: ['Regular', 'Bold'] },
+      { family: 'Gothic A1', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Goudy Bookletter 1911', weights: ['Regular'] },
+      { family: 'Gowun Batang', weights: ['Regular', 'Bold'] },
+      { family: 'Gowun Dodum', weights: ['Regular'] },
+      { family: 'Graduate', weights: ['Regular'] },
+      { family: 'Grand Hotel', weights: ['Regular'] },
+      { family: 'Grandstander', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Grape Nuts', weights: ['Regular'] },
+      { family: 'Gravitas One', weights: ['Regular'] },
+      { family: 'Great Vibes', weights: ['Regular'] },
+      { family: 'Grechen Fuemen', weights: ['Regular'] },
+      { family: 'Grenze', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Grenze Gotisch', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Grey Qo', weights: ['Regular'] },
+      { family: 'Griffy', weights: ['Regular'] },
+      { family: 'Gruppo', weights: ['Regular'] },
+      { family: 'Gudea', weights: ['Regular', 'Bold', 'Italic'] },
+      { family: 'Gugi', weights: ['Regular'] },
+      { family: 'Gulzar', weights: ['Regular'] },
+      { family: 'Gupter', weights: ['Regular', 'Medium', 'Bold'] },
+      { family: 'Gurajada', weights: ['Regular'] },
+      { family: 'Gwendolyn', weights: ['Regular', 'Bold'] },
+      { family: 'Habibi', weights: ['Regular'] },
+      { family: 'Hachi Maru Pop', weights: ['Regular'] },
+      { family: 'Hahmlet', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Halant', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Hammersmith One', weights: ['Regular'] },
+      { family: 'Hanalei', weights: ['Regular'] },
+      { family: 'Hanalei Fill', weights: ['Regular'] },
+      { family: 'Handlee', weights: ['Regular'] },
+      { family: 'Hanken Grotesk', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Hanuman', weights: ['Thin', 'Light', 'Regular', 'Bold', 'Black'] },
+      { family: 'Happy Monkey', weights: ['Regular'] },
+      { family: 'Harmattan', weights: ['Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Headland One', weights: ['Regular'] },
+      { family: 'Heebo', weights: ['Thin', 'Light', 'Regular', 'Medium', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Henny Penny', weights: ['Regular'] },
+      { family: 'Hepta Slab', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Herr Von Muellerhoff', weights: ['Regular'] },
+      { family: 'Hi Melody', weights: ['Regular'] },
+      { family: 'Hina Mincho', weights: ['Regular'] },
+      { family: 'Hind', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Hind Guntur', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Hind Madurai', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Hind Siliguri', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Hind Vadodara', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Holtwood One SC', weights: ['Regular'] },
+      { family: 'Homemade Apple', weights: ['Regular'] },
+      { family: 'Homenaje', weights: ['Regular'] },
+      { family: 'Hubballi', weights: ['Regular'] },
+      { family: 'Hurricane', weights: ['Regular'] },
+      { family: 'IBM Plex Mono', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic'] },
+      { family: 'IBM Plex Sans', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic'] },
+      { family: 'IBM Plex Sans Arabic', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'IBM Plex Sans Condensed', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic'] },
+      { family: 'IBM Plex Sans Devanagari', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'IBM Plex Sans Hebrew', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'IBM Plex Sans JP', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'IBM Plex Sans KR', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'IBM Plex Sans Thai', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'IBM Plex Sans Thai Looped', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'IBM Plex Serif', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic'] },
+      { family: 'IM Fell DW Pica', weights: ['Regular', 'Italic'] },
+      { family: 'IM Fell DW Pica SC', weights: ['Regular'] },
+      { family: 'IM Fell Double Pica', weights: ['Regular', 'Italic'] },
+      { family: 'IM Fell Double Pica SC', weights: ['Regular'] },
+      { family: 'IM Fell English', weights: ['Regular', 'Italic'] },
+      { family: 'IM Fell English SC', weights: ['Regular'] },
+      { family: 'IM Fell French Canon', weights: ['Regular', 'Italic'] },
+      { family: 'IM Fell French Canon SC', weights: ['Regular'] },
+      { family: 'IM Fell Great Primer', weights: ['Regular', 'Italic'] },
+      { family: 'IM Fell Great Primer SC', weights: ['Regular'] },
+      { family: 'Ibarra Real Nova', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic'] },
+      { family: 'Iceberg', weights: ['Regular'] },
+      { family: 'Iceland', weights: ['Regular'] },
+      { family: 'Imbue', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Imperial Script', weights: ['Regular'] },
+      { family: 'Imprima', weights: ['Regular'] },
+      { family: 'Inconsolata', weights: ['ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Inder', weights: ['Regular'] },
+      { family: 'Indie Flower', weights: ['Regular'] },
+      { family: 'Ingrid Darling', weights: ['Regular'] },
+      { family: 'Inika', weights: ['Regular', 'Bold'] },
+      { family: 'Inknut Antiqua', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Inria Sans', weights: ['Light', 'Regular', 'Bold', 'LightItalic', 'Italic', 'BoldItalic'] },
+      { family: 'Inria Serif', weights: ['Light', 'Regular', 'Bold', 'LightItalic', 'Italic', 'BoldItalic'] },
+      { family: 'Inspiration', weights: ['Regular'] },
+      { family: 'Inter', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Inter Tight', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldHeigh', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Irish Grover', weights: ['Regular'] },
+      { family: 'Island Moments', weights: ['Regular'] },
+      { family: 'Istok Web', weights: ['Regular', 'Bold', 'Italic', 'BoldItalic'] },
+      { family: 'Italiana', weights: ['Regular'] },
+      { family: 'Italianno', weights: ['Regular'] },
+      { family: 'Itim', weights: ['Regular'] },
+      { family: 'Jacques Francois', weights: ['Regular'] },
+      { family: 'Jacques Francois Shadow', weights: ['Regular'] },
+      { family: 'Jaldi', weights: ['Regular', 'Bold'] },
+      { family: 'JetBrains Mono', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic'] },
+      { family: 'Jim Nightshade', weights: ['Regular'] },
+      { family: 'Joan', weights: ['Regular'] },
+      { family: 'Jockey One', weights: ['Regular'] },
+      { family: 'Jolly Lodger', weights: ['Regular'] },
+      { family: 'Jomhuria', weights: ['Regular'] },
+      { family: 'Jomolhari', weights: ['Regular'] },
+      { family: 'Josefin Sans', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic'] },
+      { family: 'Josefin Slab', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic'] },
+      { family: 'Jost', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Journalism', weights: ['Regular'] },
+      { family: 'Jua', weights: ['Regular'] },
+      { family: 'Judson', weights: ['Regular', 'Bold', 'Italic'] },
+      { family: 'Julee', weights: ['Regular'] },
+      { family: 'Julius Sans One', weights: ['Regular'] },
+      { family: 'Junge', weights: ['Regular'] },
+      { family: 'Jura', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Just Another Hand', weights: ['Regular'] },
+      { family: 'Just Me Again Down Here', weights: ['Regular'] },
+      { family: 'K15', weights: ['Regular'] },
+      { family: 'Kadwa', weights: ['Regular', 'Bold'] },
+      { family: 'Kaisei Decol', weights: ['Regular', 'Medium', 'Bold'] },
+      { family: 'Kaisei Opti', weights: ['Regular', 'Medium', 'Bold'] },
+      { family: 'Kaisei Tokumin', weights: ['Regular', 'Medium', 'Bold'] },
+      { family: 'Kalam', weights: ['Light', 'Regular', 'Bold'] },
+      { family: 'Kameron', weights: ['Regular', 'Bold'] },
+      { family: 'Kanit', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Kantumruy Pro', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic'] },
+      { family: 'Karantina', weights: ['Light', 'Regular', 'Bold'] },
+      { family: 'Karla', weights: ['ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic'] },
+      { family: 'Karma', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Katibeh', weights: ['Regular'] },
+      { family: 'Kaushan Script', weights: ['Regular'] },
+      { family: 'Kavivanar', weights: ['Regular'] },
+      { family: 'Kavoon', weights: ['Regular'] },
+      { family: 'Kdam Thmor Pro', weights: ['Regular'] },
+      { family: 'Keania One', weights: ['Regular'] },
+      { family: 'Kelly Slab', weights: ['Regular'] },
+      { family: 'Kenia', weights: ['Regular'] },
+      { family: 'Khand', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Khmer', weights: ['Regular'] },
+      { family: 'Khula', weights: ['Light', 'Regular', 'SemiBold', 'Bold', 'ExtraBold'] },
+      { family: 'Kings', weights: ['Regular'] },
+      { family: 'Kirang Haerang', weights: ['Regular'] },
+      { family: 'Kite One', weights: ['Regular'] },
+      { family: 'Kiwi Maru', weights: ['Light', 'Regular', 'Medium'] },
+      { family: 'Klee One', weights: ['Regular', 'SemiBold'] },
+      { family: 'Knewave', weights: ['Regular'] },
+      { family: 'KoHo', weights: ['ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic'] },
+      { family: 'Kodchasan', weights: ['ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic'] },
+      { family: 'Koh Santepheap', weights: ['Thin', 'Light', 'Regular', 'Bold', 'Black'] },
+      { family: 'Kolker Brush', weights: ['Regular'] },
+      { family: 'Kosugi', weights: ['Regular'] },
+      { family: 'Kosugi Maru', weights: ['Regular'] },
+      { family: 'Kotta One', weights: ['Regular'] },
+      { family: 'Koulen', weights: ['Regular'] },
+      { family: 'Kranky', weights: ['Regular'] },
+      { family: 'Kreative', weights: ['Regular'] },
+      { family: 'Kreon', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Kristi', weights: ['Regular'] },
+      { family: 'Krona One', weights: ['Regular'] },
+      { family: 'Krounch', weights: ['Regular'] },
+      { family: 'Kufam', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Kulim Park', weights: ['ExtraLight', 'Light', 'Regular', 'SemiBold', 'Bold', 'ExtraLightItalic', 'LightItalic', 'Italic', 'SemiBoldItalic', 'BoldItalic'] },
+      { family: 'Kumar One', weights: ['Regular'] },
+      { family: 'Kumar One Outline', weights: ['Regular'] },
+      { family: 'Kumbh Sans', weights: ['Thin', 'Light', 'Regular', 'Medium', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Kurale', weights: ['Regular'] },
+      { family: 'La Belle Aurore', weights: ['Regular'] },
+      { family: 'Lacquer', weights: ['Regular'] },
+      { family: 'Laila', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Lakki Reddy', weights: ['Regular'] },
+      { family: 'Lalezar', weights: ['Regular'] },
+      { family: 'Lancelot', weights: ['Regular'] },
+      { family: 'Lander', weights: ['Regular'] },
+      { family: 'Language', weights: ['Regular'] },
+      { family: 'Lantean', weights: ['Regular'] },
+      { family: 'Lara', weights: ['Regular'] },
+      { family: 'Larsen', weights: ['Regular'] },
+      { family: 'Lateef', weights: ['ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Lato', weights: ['Thin', 'Light', 'Regular', 'Bold', 'Black', 'ThinItalic', 'LightItalic', 'Italic', 'BoldItalic', 'BlackItalic'] },
+      { family: 'Lavishly Yours', weights: ['Regular'] },
+      { family: 'League Gothic', weights: ['Regular'] },
+      { family: 'League Script', weights: ['Regular'] },
+      { family: 'League Spartan', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Leckerli One', weights: ['Regular'] },
+      { family: 'Ledger', weights: ['Regular'] },
+      { family: 'Lekton', weights: ['Regular', 'Bold', 'Italic'] },
+      { family: 'Lemon', weights: ['Regular'] },
+      { family: 'Lemonada', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Lexend', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Lexend Deca', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Lexend Exa', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Lexend Giga', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Lexend Mega', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Lexend Peta', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Lexend Tera', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Lexend Zetta', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Libre Barcode 128', weights: ['Regular'] },
+      { family: 'Libre Barcode 128 Text', weights: ['Regular'] },
+      { family: 'Libre Barcode 39', weights: ['Regular'] },
+      { family: 'Libre Barcode 39 Extended', weights: ['Regular'] },
+      { family: 'Libre Barcode 39 Extended Text', weights: ['Regular'] },
+      { family: 'Libre Barcode 39 Text', weights: ['Regular'] },
+      { family: 'Libre Baskerville', weights: ['Regular', 'Bold', 'Italic'] },
+      { family: 'Libre Bodoni', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic'] },
+      { family: 'Libre Caslon Display', weights: ['Regular'] },
+      { family: 'Libre Caslon Text', weights: ['Regular', 'Bold', 'Italic'] },
+      { family: 'Libre Franklin', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Licorice', weights: ['Regular'] },
+      { family: 'Life Savers', weights: ['Regular', 'Bold', 'ExtraBold'] },
+      { family: 'Lilita One', weights: ['Regular'] },
+      { family: 'Lily Script One', weights: ['Regular'] },
+      { family: 'Limelight', weights: ['Regular'] },
+      { family: 'Linden Hill', weights: ['Regular', 'Italic'] },
+      { family: 'Literata', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Liu Jian Mao Cao', weights: ['Regular'] },
+      { family: 'Livvic', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'BlackItalic'] },
+      { family: 'Lobster', weights: ['Regular'] },
+      { family: 'Lobster Two', weights: ['Regular', 'Bold', 'Italic', 'BoldItalic'] },
+      { family: 'Londrina Outline', weights: ['Regular'] },
+      { family: 'Londrina Shadow', weights: ['Regular'] },
+      { family: 'Londrina Sketch', weights: ['Regular'] },
+      { family: 'Londrina Solid', weights: ['Thin', 'Light', 'Regular', 'Black'] },
+      { family: 'Long Cang', weights: ['Regular'] },
+      { family: 'Lora', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic'] },
+      { family: 'Love Light', weights: ['Regular'] },
+      { family: 'Love Ya Like A Sister', weights: ['Regular'] },
+      { family: 'Loved by the King', weights: ['Regular'] },
+      { family: 'Lovers Quarrel', weights: ['Regular'] },
+      { family: 'Luckiest Guy', weights: ['Regular'] },
+      { family: 'Lusitana', weights: ['Regular', 'Bold'] },
+      { family: 'Lustria', weights: ['Regular'] },
+      { family: 'Luxurious Roman', weights: ['Regular'] },
+      { family: 'Luxurious Script', weights: ['Regular'] },
+      { family: 'M PLUS 1', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'M PLUS 1 Code', weights: ['Thin', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'M PLUS 1p', weights: ['Thin', 'Light', 'Regular', 'Medium', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'M PLUS 2', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'M PLUS Rounded 1c', weights: ['Thin', 'Light', 'Regular', 'Medium', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Ma Shan Zheng', weights: ['Regular'] },
+      { family: 'Macondo', weights: ['Regular'] },
+      { family: 'Macondo Swash Caps', weights: ['Regular'] },
+      { family: 'Mada', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'Black'] },
+      { family: 'Madora', weights: ['Regular'] },
+      { family: 'Madrigal', weights: ['Regular'] },
+      { family: 'Maggie', weights: ['Regular'] },
+      { family: 'Magic', weights: ['Regular'] },
+      { family: 'Magra', weights: ['Regular', 'Bold'] },
+      { family: 'Maiden Orange', weights: ['Regular'] },
+      { family: 'Maitree', weights: ['ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Major Mono Display', weights: ['Regular'] },
+      { family: 'Mako', weights: ['Regular'] },
+      { family: 'Mali', weights: ['ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic'] },
+      { family: 'Mallanna', weights: ['Regular'] },
+      { family: 'Mandali', weights: ['Regular'] },
+      { family: 'Manjari', weights: ['Thin', 'Regular', 'Bold'] },
+      { family: 'Manrope', weights: ['ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold'] },
+      { family: 'Mansalva', weights: ['Regular'] },
+      { family: 'Manuale', weights: ['ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Marcellus', weights: ['Regular'] },
+      { family: 'Marcellus SC', weights: ['Regular'] },
+      { family: 'Marck Script', weights: ['Regular'] },
+      { family: 'Margarine', weights: ['Regular'] },
+      { family: 'Marhey', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Markazi Text', weights: ['Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Marko One', weights: ['Regular'] },
+      { family: 'Marmaduke', weights: ['Regular'] },
+      { family: 'Marmelad', weights: ['Regular'] },
+      { family: 'Martel', weights: ['Light', 'Regular', 'Medium', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Martel Sans', weights: ['Thin', 'Light', 'Regular', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Martian Mono', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold'] },
+      { family: 'Marvel', weights: ['Regular', 'Bold', 'Italic', 'BoldItalic'] },
+      { family: 'Mate', weights: ['Regular', 'Italic'] },
+      { family: 'Mate SC', weights: ['Regular'] },
+      { family: 'Maven Pro', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'McLaren', weights: ['Regular'] },
+      { family: 'Mea Culpa', weights: ['Regular'] },
+      { family: 'Meddon', weights: ['Regular'] },
+      { family: 'MedievalSharp', weights: ['Regular'] },
+      { family: 'Medula One', weights: ['Regular'] },
+      { family: 'Meera Inimai', weights: ['Regular'] },
+      { family: 'Meie Script', weights: ['Regular'] },
+      { family: 'Meow Script', weights: ['Regular'] },
+      { family: 'Merienda', weights: ['Regular', 'Bold'] },
+      { family: 'Merienda One', weights: ['Regular'] },
+      { family: 'Merriweather', weights: ['Light', 'Regular', 'Bold', 'Black', 'LightItalic', 'Italic', 'BoldItalic', 'BlackItalic'] },
+      { family: 'Merriweather Sans', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic'] },
+      { family: 'Meslo LG', weights: ['Regular'] },
+      { family: 'Metal', weights: ['Regular'] },
+      { family: 'Metal Mania', weights: ['Regular'] },
+      { family: 'Metamorphous', weights: ['Regular'] },
+      { family: 'Metrophobic', weights: ['Regular'] },
+      { family: 'Michroma', weights: ['Regular'] },
+      { family: 'Milonga', weights: ['Regular'] },
+      { family: 'Miltonian', weights: ['Regular'] },
+      { family: 'Miltonian Tattoo', weights: ['Regular'] },
+      { family: 'Mina', weights: ['Regular', 'Bold'] },
+      { family: 'Miniver', weights: ['Regular'] },
+      { family: 'Miriam Libre', weights: ['Regular', 'Bold'] },
+      { family: 'Mirza', weights: ['Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Miss Fajardose', weights: ['Regular'] },
+      { family: 'Mitr', weights: ['ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Mochiery', weights: ['Regular'] },
+      { family: 'Modak', weights: ['Regular'] },
+      { family: 'Modern Antiqua', weights: ['Regular'] },
+      { family: 'Mogra', weights: ['Regular'] },
+      { family: 'Molengo', weights: ['Regular'] },
+      { family: 'Molle', weights: ['Italic'] },
+      { family: 'Monda', weights: ['Regular', 'Bold'] },
+      { family: 'Monofett', weights: ['Regular'] },
+      { family: 'Monoton', weights: ['Regular'] },
+      { family: 'Monsieur La Doulaise', weights: ['Regular'] },
+      { family: 'Montagu Slab', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'MonteCarlo', weights: ['Regular'] },
+      { family: 'Montez', weights: ['Regular'] },
+      { family: 'Montserrat', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Montserrat Alternates', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Montserrat Subrayada', weights: ['Regular', 'Bold'] },
+      { family: 'Moo Lah Lah', weights: ['Regular'] },
+      { family: 'Moon Dance', weights: ['Regular'] },
+      { family: 'Moul', weights: ['Regular'] },
+      { family: 'Moulpali', weights: ['Regular'] },
+      { family: 'Mountains of Christmas', weights: ['Regular', 'Bold'] },
+      { family: 'Mouse Memoirs', weights: ['Regular'] },
+      { family: 'Mr Bedfort', weights: ['Regular'] },
+      { family: 'Mr Dafoe', weights: ['Regular'] },
+      { family: 'Mr De Haviland', weights: ['Regular'] },
+      { family: 'Mrs Saint Delafield', weights: ['Regular'] },
+      { family: 'Mrs Sheppards', weights: ['Regular'] },
+      { family: 'Ms Madi', weights: ['Regular'] },
+      { family: 'Mukta', weights: ['ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold'] },
+      { family: 'Mukta Mahee', weights: ['ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold'] },
+      { family: 'Mukta Malar', weights: ['ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold'] },
+      { family: 'Mukta Vaani', weights: ['ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold'] },
+      { family: 'Muli', weights: ['ExtraLight', 'Light', 'Regular', 'SemiBold', 'Bold', 'ExtraLightItalic', 'LightItalic', 'Italic', 'SemiBoldItalic', 'BoldItalic'] },
+      { family: 'Mulish', weights: ['ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Murecho', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'MuseoModerno', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'My Soul', weights: ['Regular'] },
+      { family: 'Myra', weights: ['Regular'] },
+      { family: 'Mystery Quest', weights: ['Regular'] },
+      { family: 'NTR', weights: ['Regular'] },
+      { family: 'Nabla', weights: ['Regular'] },
+      { family: 'Nanum Brush Script', weights: ['Regular'] },
+      { family: 'Nanum Gothic', weights: ['Regular', 'Bold', 'ExtraBold'] },
+      { family: 'Nanum Gothic Coding', weights: ['Regular', 'Bold'] },
+      { family: 'Nanum Myeongjo', weights: ['Regular', 'Bold', 'ExtraBold'] },
+      { family: 'Nanum Pen Script', weights: ['Regular'] },
+      { family: 'Naren', weights: ['Regular'] },
+      { family: 'Neonderthaw', weights: ['Regular'] },
+      { family: 'Nerko One', weights: ['Regular'] },
+      { family: 'Neucha', weights: ['Regular'] },
+      { family: 'Neuton', weights: ['ExtraLight', 'Light', 'Regular', 'Italic', 'Bold', 'ExtraBold'] },
+      { family: 'New Rocker', weights: ['Regular'] },
+      { family: 'New Tegomin', weights: ['Regular'] },
+      { family: 'News Cycle', weights: ['Regular', 'Bold'] },
+      { family: 'Newsreader', weights: ['ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Niconne', weights: ['Regular'] },
+      { family: 'Nirmala UI', weights: ['Regular', 'Bold'] },
+      { family: 'Nixie One', weights: ['Regular'] },
+      { family: 'Nobile', weights: ['Regular', 'Medium', 'Bold', 'Italic', 'MediumItalic', 'BoldItalic'] },
+      { family: 'Nokora', weights: ['Thin', 'Light', 'Regular', 'Bold', 'Black'] },
+      { family: 'Norican', weights: ['Regular'] },
+      { family: 'Nosifer', weights: ['Regular'] },
+      { family: 'Notable', weights: ['Regular'] },
+      { family: 'Nothing You Could Do', weights: ['Regular'] },
+      { family: 'Noticia Text', weights: ['Regular', 'Bold', 'Italic', 'BoldItalic'] },
+      { family: 'Noto Sans', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Noto Sans Display', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Noto Sans Mono', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Noto Serif', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Noto Serif Display', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Nova Cut', weights: ['Regular'] },
+      { family: 'Nova Flat', weights: ['Regular'] },
+      { family: 'Nova Mono', weights: ['Regular'] },
+      { family: 'Nova Oval', weights: ['Regular'] },
+      { family: 'Nova Round', weights: ['Regular'] },
+      { family: 'Nova Script', weights: ['Regular'] },
+      { family: 'Nova Slim', weights: ['Regular'] },
+      { family: 'Nova Square', weights: ['Regular'] },
+      { family: 'Numans', weights: ['Regular'] },
+      { family: 'Nunito', weights: ['ExtraLight', 'Light', 'Regular', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Nunito Sans', weights: ['ExtraLight', 'Light', 'Regular', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ExtraLightItalic', 'LightItalic', 'Italic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Nuosu SIL', weights: ['Regular'] },
+      { family: 'Odibee Sans', weights: ['Regular'] },
+      { family: 'Odor Mean Chey', weights: ['Regular'] },
+      { family: 'Offside', weights: ['Regular'] },
+      { family: 'Oi', weights: ['Regular'] },
+      { family: 'Old Standard TT', weights: ['Regular', 'Italic', 'Bold'] },
+      { family: 'Oldenburg', weights: ['Regular'] },
+      { family: 'Ole', weights: ['Regular'] },
+      { family: 'Oleo Script', weights: ['Regular', 'Bold'] },
+      { family: 'Oleo Script Swash Caps', weights: ['Regular', 'Bold'] },
+      { family: 'Open Sans', weights: ['Light', 'Regular', 'SemiBold', 'Bold', 'ExtraBold', 'LightItalic', 'Italic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic'] },
+      { family: 'Oranienbaum', weights: ['Regular'] },
+      { family: 'Orbitron', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Oregano', weights: ['Regular', 'Italic'] },
+      { family: 'Orelega One', weights: ['Regular'] },
+      { family: 'Orienta', weights: ['Regular'] },
+      { family: 'Origin', weights: ['Regular'] },
+      { family: 'Original Surfer', weights: ['Regular'] },
+      { family: 'Oswald', weights: ['ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Outfit', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Over the Rainbow', weights: ['Regular'] },
+      { family: 'Overlock', weights: ['Regular', 'Bold', 'Black', 'Italic', 'BoldItalic', 'BlackItalic'] },
+      { family: 'Overlock SC', weights: ['Regular'] },
+      { family: 'Overpass', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Overpass Mono', weights: ['Light', 'Regular', 'SemiBold', 'Bold'] },
+      { family: 'OVO', weights: ['Regular'] },
+      { family: 'Oxygen', weights: ['Light', 'Regular', 'Bold'] },
+      { family: 'Oxygen Mono', weights: ['Regular'] },
+      { family: 'PT Mono', weights: ['Regular'] },
+      { family: 'PT Sans', weights: ['Regular', 'Bold', 'Italic', 'BoldItalic'] },
+      { family: 'PT Sans Caption', weights: ['Regular', 'Bold'] },
+      { family: 'PT Sans Narrow', weights: ['Regular', 'Bold'] },
+      { family: 'PT Serif', weights: ['Regular', 'Bold', 'Italic', 'BoldItalic'] },
+      { family: 'PT Serif Caption', weights: ['Regular', 'Italic'] },
+      { family: 'Pacifico', weights: ['Regular'] },
+      { family: 'Padauk', weights: ['Regular', 'Bold'] },
+      { family: 'Padyakke Expanded One', weights: ['Regular'] },
+      { family: 'Palanquin', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Palanquin Dark', weights: ['Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Pangolin', weights: ['Regular'] },
+      { family: 'Paprika', weights: ['Regular'] },
+      { family: 'Parisienne', weights: ['Regular'] },
+      { family: 'Passero One', weights: ['Regular'] },
+      { family: 'Passion One', weights: ['Regular', 'Bold', 'Black'] },
+      { family: 'Passions Conflict', weights: ['Regular'] },
+      { family: 'Pathway Gothic One', weights: ['Regular'] },
+      { family: 'Patrick Hand', weights: ['Regular'] },
+      { family: 'Patrick Hand SC', weights: ['Regular'] },
+      { family: 'Pattaya', weights: ['Regular'] },
+      { family: 'Patua One', weights: ['Regular'] },
+      { family: 'Pavanam', weights: ['Regular'] },
+      { family: 'Paytone One', weights: ['Regular'] },
+      { family: 'Peddana', weights: ['Regular'] },
+      { family: 'Peralta', weights: ['Regular'] },
+      { family: 'Petit Formal Script', weights: ['Regular'] },
+      { family: 'Petrona', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Philosopher', weights: ['Regular', 'Bold', 'Italic', 'BoldItalic'] },
+      { family: 'Piazzolla', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Piedra', weights: ['Regular'] },
+      { family: 'Pinyon Script', weights: ['Regular'] },
+      { family: 'Pirata One', weights: ['Regular'] },
+      { family: 'Plaster', weights: ['Regular'] },
+      { family: 'Play', weights: ['Regular', 'Bold'] },
+      { family: 'Playfair Display', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Playfair Display SC', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Plus Jakarta Sans', weights: ['ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic'] },
+      { family: 'Podkova', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold'] },
+      { family: 'Poiret One', weights: ['Regular'] },
+      { family: 'Poller One', weights: ['Regular'] },
+      { family: 'Poly', weights: ['Regular', 'Italic'] },
+      { family: 'Pompiere', weights: ['Regular'] },
+      { family: 'Pontano Sans', weights: ['Regular'] },
+      { family: 'Poor Story', weights: ['Regular'] },
+      { family: 'Poppins', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldHeigh', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Port Lligat Sans', weights: ['Regular'] },
+      { family: 'Port Lligat Slab', weights: ['Regular'] },
+      { family: 'Potta One', weights: ['Regular'] },
+      { family: 'Pragati Narrow', weights: ['Regular', 'Bold'] },
+      { family: 'Praise', weights: ['Regular'] },
+      { family: 'Prata', weights: ['Regular'] },
+      { family: 'Preahvihear', weights: ['Regular'] },
+      { family: 'Press Start 2P', weights: ['Regular'] },
+      { family: 'Pridi', weights: ['ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Princess Sofia', weights: ['Regular'] },
+      { family: 'Prociono', weights: ['Regular'] },
+      { family: 'Prompt', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Prosto One', weights: ['Regular'] },
+      { family: 'Proza Libre', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic'] },
+      { family: 'Public Sans', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Puppert', weights: ['Regular'] },
+      { family: 'Puritan', weights: ['Regular', 'Bold', 'Italic', 'BoldItalic'] },
+      { family: 'Purple Purse', weights: ['Regular'] },
+      { family: 'Qahiri', weights: ['Regular'] },
+      { family: 'Questrial', weights: ['Regular'] },
+      { family: 'Quicksand', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Quintessential', weights: ['Regular'] },
+      { family: 'Qwigley', weights: ['Regular'] },
+      { family: 'Racing Sans One', weights: ['Regular'] },
+      { family: 'Radio Canada', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic'] },
+      { family: 'Radley', weights: ['Regular', 'Italic'] },
+      { family: 'Rajdhani', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Rakkas', weights: ['Regular'] },
+      { family: 'Raleway', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Raleway Dots', weights: ['Regular'] },
+      { family: 'Ramabhadra', weights: ['Regular'] },
+      { family: 'Ramaraja', weights: ['Regular'] },
+      { family: 'Rambla', weights: ['Regular', 'Bold', 'Italic', 'BoldItalic'] },
+      { family: 'Ramneek', weights: ['Regular'] },
+      { family: 'Ranchers', weights: ['Regular'] },
+      { family: 'Rancho', weights: ['Regular'] },
+      { family: 'Ranga', weights: ['Regular', 'Bold'] },
+      { family: 'Rasa', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic'] },
+      { family: 'Rationale', weights: ['Regular'] },
+      { family: 'Ravi Prakash', weights: ['Regular'] },
+      { family: 'Readex Pro', weights: ['ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Recursive', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Red Hat Display', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Red Hat Mono', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic'] },
+      { family: 'Red Hat Text', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic'] },
+      { family: 'Red Rose', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Redacted', weights: ['Regular'] },
+      { family: 'Redacted Script', weights: ['Regular', 'Bold'] },
+      { family: 'Redressed', weights: ['Regular'] },
+      { family: 'Reem Kufi', weights: ['Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Reenie Beanie', weights: ['Regular'] },
+      { family: 'Revalia', weights: ['Regular'] },
+      { family: 'Rhodium Libre', weights: ['Regular'] },
+      { family: 'Ribeye', weights: ['Regular'] },
+      { family: 'Ribeye Marrow', weights: ['Regular'] },
+      { family: 'Righteous', weights: ['Regular'] },
+      { family: 'Risque', weights: ['Regular'] },
+      { family: 'Road Rage', weights: ['Regular'] },
+      { family: 'Roboto', weights: ['Thin', 'Light', 'Regular', 'Medium', 'Bold', 'Black', 'ThinItalic', 'LightItalic', 'Italic', 'MediumItalic', 'BoldItalic', 'BlackItalic'] },
+      { family: 'Roboto Condensed', weights: ['Light', 'Regular', 'Bold', 'LightItalic', 'Italic', 'BoldItalic'] },
+      { family: 'Roboto Flex', weights: ['Regular'] },
+      { family: 'Roboto Mono', weights: ['Thin', 'Light', 'Regular', 'Medium', 'Bold', 'ThinItalic', 'LightItalic', 'Italic', 'MediumItalic', 'BoldItalic'] },
+      { family: 'Roboto Serif', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Roboto Slab', weights: ['Thin', 'Light', 'Regular', 'Medium', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Rochester', weights: ['Regular'] },
+      { family: 'Rock Salt', weights: ['Regular'] },
+      { family: 'Rokkitt', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Romana', weights: ['Regular'] },
+      { family: 'Ropa Sans', weights: ['Regular', 'Italic'] },
+      { family: 'Rosario', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic'] },
+      { family: 'Rosarivo', weights: ['Regular', 'Italic'] },
+      { family: 'Rouge Script', weights: ['Regular'] },
+      { family: 'Rowdies', weights: ['Light', 'Regular', 'Bold'] },
+      { family: 'Rozha One', weights: ['Regular'] },
+      { family: 'Rubik', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Rubik Beastly', weights: ['Regular'] },
+      { family: 'Rubik Bubbles', weights: ['Regular'] },
+      { family: 'Rubik Burned', weights: ['Regular'] },
+      { family: 'Rubik Distressed', weights: ['Regular'] },
+      { family: 'Rubik Glitch', weights: ['Regular'] },
+      { family: 'Rubik Marker Hatch', weights: ['Regular'] },
+      { family: 'Rubik Maze', weights: ['Regular'] },
+      { family: 'Rubik Microbe', weights: ['Regular'] },
+      { family: 'Rubik Moonrocks', weights: ['Regular'] },
+      { family: 'Rubik Mono One', weights: ['Regular'] },
+      { family: 'Rubik Puddles', weights: ['Regular'] },
+      { family: 'Rubik Wet Paint', weights: ['Regular'] },
+      { family: 'Ruda', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Rufina', weights: ['Regular', 'Bold'] },
+      { family: 'Ruge Boogie', weights: ['Regular'] },
+      { family: 'Ruluko', weights: ['Regular'] },
+      { family: 'Rum Raisin', weights: ['Regular'] },
+      { family: 'Ruslan Display', weights: ['Regular'] },
+      { family: 'Russo One', weights: ['Regular'] },
+      { family: 'Ruthie', weights: ['Regular'] },
+      { family: 'Rye', weights: ['Regular'] },
+      { family: 'STIX Two Text', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic'] },
+      { family: 'Sacramento', weights: ['Regular'] },
+      { family: 'Sahitya', weights: ['Regular', 'Bold'] },
+      { family: 'Sail', weights: ['Regular'] },
+      { family: 'Saira', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Saira Condensed', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Saira Extra Condensed', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Saira Semi Condensed', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Saira Stencil One', weights: ['Regular'] },
+      { family: 'Sajak', weights: ['Regular'] },
+      { family: 'Salsa', weights: ['Regular'] },
+      { family: 'Sanchez', weights: ['Regular', 'Italic'] },
+      { family: 'Sancreek', weights: ['Regular'] },
+      { family: 'Sansita', weights: ['Regular', 'Bold', 'ExtraBold', 'Black', 'Italic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Sansita Swashed', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Sarabun', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic'] },
+      { family: 'Sarala', weights: ['Regular', 'Bold'] },
+      { family: 'Sarina', weights: ['Regular'] },
+      { family: 'Sarpanch', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Sassy Frass', weights: ['Regular'] },
+      { family: 'Satisfy', weights: ['Regular'] },
+      { family: 'Sawarabi Gothic', weights: ['Regular'] },
+      { family: 'Sawarabi Mincho', weights: ['Regular'] },
+      { family: 'Scada', weights: ['Regular', 'Bold', 'Italic', 'BoldItalic'] },
+      { family: 'Scheherazade New', weights: ['Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Schoolbell', weights: ['Regular'] },
+      { family: 'Scope One', weights: ['Regular'] },
+      { family: 'Seaweed Script', weights: ['Regular'] },
+      { family: 'Secular One', weights: ['Regular'] },
+      { family: 'Sedgwick Ave', weights: ['Regular'] },
+      { family: 'Sedgwick Ave Display', weights: ['Regular'] },
+      { family: 'Sen', weights: ['Regular', 'Bold', 'ExtraBold'] },
+      { family: 'Send Flower', weights: ['Regular'] },
+      { family: 'Sevillana', weights: ['Regular'] },
+      { family: 'Seymour One', weights: ['Regular'] },
+      { family: 'Shadows Into Light', weights: ['Regular'] },
+      { family: 'Shadows Into Light Two', weights: ['Regular'] },
+      { family: 'Shalimar', weights: ['Regular'] },
+      { family: 'Shanti', weights: ['Regular'] },
+      { family: 'Share', weights: ['Regular', 'Bold', 'Italic', 'BoldItalic'] },
+      { family: 'Share Tech', weights: ['Regular'] },
+      { family: 'Share Tech Mono', weights: ['Regular'] },
+      { family: 'Shippori Mincho', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold'] },
+      { family: 'Shippori Mincho B1', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold'] },
+      { family: 'Shojumaru', weights: ['Regular'] },
+      { family: 'Short Stack', weights: ['Regular'] },
+      { family: 'Shrikhand', weights: ['Regular'] },
+      { family: 'Siemreap', weights: ['Regular'] },
+      { family: 'Sigmar One', weights: ['Regular'] },
+      { family: 'Signika', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Signika Negative', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Silkscreen', weights: ['Regular', 'Bold'] },
+      { family: 'Simonetta', weights: ['Regular', 'Italic', 'Black', 'BlackItalic'] },
+      { family: 'Sintony', weights: ['Regular', 'Bold'] },
+      { family: 'Sirin Stencil', weights: ['Regular'] },
+      { family: 'Six Caps', weights: ['Regular'] },
+      { family: 'Skranji', weights: ['Regular', 'Bold'] },
+      { family: 'Slabo 13px', weights: ['Regular'] },
+      { family: 'Slabo 27px', weights: ['Regular'] },
+      { family: 'Slackey', weights: ['Regular'] },
+      { family: 'Smokum', weights: ['Regular'] },
+      { family: 'Smooch', weights: ['Regular'] },
+      { family: 'Smooch Sans', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Smythe', weights: ['Regular'] },
+      { family: 'Sniglet', weights: ['Regular', 'ExtraBold'] },
+      { family: 'Snippet', weights: ['Regular'] },
+      { family: 'Snowburst One', weights: ['Regular'] },
+      { family: 'Sofadi One', weights: ['Regular'] },
+      { family: 'Sofia', weights: ['Regular'] },
+      { family: 'Sofia Sans', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Solway', weights: ['Light', 'Regular', 'Medium', 'Bold', 'ExtraBold'] },
+      { family: 'Song Myung', weights: ['Regular'] },
+      { family: 'Sonsie One', weights: ['Regular'] },
+      { family: 'Sora', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold'] },
+      { family: 'Sorts Mill Goudy', weights: ['Regular', 'Italic'] },
+      { family: 'Source Code Pro', weights: ['ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'Black', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'BlackItalic'] },
+      { family: 'Source Sans 3', weights: ['ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'Black', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'BlackItalic'] },
+      { family: 'Source Sans Pro', weights: ['ExtraLight', 'Light', 'Regular', 'SemiBold', 'Bold', 'Black', 'ExtraLightItalic', 'LightItalic', 'Italic', 'SemiBoldItalic', 'BoldItalic', 'BlackItalic'] },
+      { family: 'Source Serif 4', weights: ['ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'Black', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'BlackItalic'] },
+      { family: 'Source Serif Pro', weights: ['Regular', 'SemiBold', 'Bold', 'Black', 'Italic', 'SemiBoldItalic', 'BoldItalic', 'BlackItalic'] },
+      { family: 'Space Grotesk', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Space Mono', weights: ['Regular', 'Bold', 'Italic', 'BoldItalic'] },
+      { family: 'Special Elite', weights: ['Regular'] },
+      { family: 'Spectral', weights: ['ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic'] },
+      { family: 'Spectral SC', weights: ['ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic'] },
+      { family: 'Spicy Rice', weights: ['Regular'] },
+      { family: 'Spinnaker', weights: ['Regular'] },
+      { family: 'Spirax', weights: ['Regular'] },
+      { family: 'Spline Sans', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Spline Sans Mono', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic'] },
+      { family: 'Squada One', weights: ['Regular'] },
+      { family: 'Sree Krushnadevaraya', weights: ['Regular'] },
+      { family: 'Sriracha', weights: ['Regular'] },
+      { family: 'Srisakdi', weights: ['Regular', 'Bold'] },
+      { family: 'Staatliches', weights: ['Regular'] },
+      { family: 'Stalemate', weights: ['Regular'] },
+      { family: 'Stalinist One', weights: ['Regular'] },
+      { family: 'Stardos Stencil', weights: ['Regular', 'Bold'] },
+      { family: 'Stay Calm', weights: ['Regular'] },
+      { family: 'Stint Ultra Condensed', weights: ['Regular'] },
+      { family: 'Stint Ultra Expanded', weights: ['Regular'] },
+      { family: 'Stoke', weights: ['Light', 'Regular'] },
+      { family: 'Strait', weights: ['Regular'] },
+      { family: 'Style Script', weights: ['Regular'] },
+      { family: 'Stylish', weights: ['Regular'] },
+      { family: 'Sue Ellen Francisco', weights: ['Regular'] },
+      { family: 'Suez One', weights: ['Regular'] },
+      { family: 'Sulphur Point', weights: ['Light', 'Regular', 'Bold'] },
+      { family: 'Sumana', weights: ['Regular', 'Bold'] },
+      { family: 'Sunflower', weights: ['Light', 'Regular', 'Medium', 'Bold'] },
+      { family: 'Sunshiney', weights: ['Regular'] },
+      { family: 'Supermercado One', weights: ['Regular'] },
+      { family: 'Sura', weights: ['Regular', 'Bold'] },
+      { family: 'Suranna', weights: ['Regular'] },
+      { family: 'Suravaram', weights: ['Regular'] },
+      { family: 'Suwannaphum', weights: ['Thin', 'Light', 'Regular', 'Bold', 'Black'] },
+      { family: 'Swanky and Moo Moo', weights: ['Regular'] },
+      { family: 'Syncopate', weights: ['Regular', 'Bold'] },
+      { family: 'Syne', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold'] },
+      { family: 'Syne Tactile', weights: ['Regular'] },
+      { family: 'Tai Heritage Pro', weights: ['Regular', 'Bold'] },
+      { family: 'Tajawal', weights: ['ExtraLight', 'Light', 'Regular', 'Medium', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Tangerine', weights: ['Regular', 'Bold'] },
+      { family: 'Taprom', weights: ['Regular'] },
+      { family: 'Tauri', weights: ['Regular'] },
+      { family: 'Taviraj', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Teko', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold'] },
+      { family: 'Telex', weights: ['Regular'] },
+      { family: 'Tenali Ramakrishna', weights: ['Regular'] },
+      { family: 'Tenor Sans', weights: ['Regular'] },
+      { family: 'Text Me One', weights: ['Regular'] },
+      { family: 'Texturina', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Thasadith', weights: ['Regular', 'Bold', 'Italic', 'BoldItalic'] },
+      { family: 'The Girl Next Door', weights: ['Regular'] },
+      { family: 'The Nautigal', weights: ['Regular', 'Bold'] },
+      { family: 'Tienne', weights: ['Regular', 'Bold', 'Black'] },
+      { family: 'Tillana', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold'] },
+      { family: 'Timmana', weights: ['Regular'] },
+      { family: 'Tinos', weights: ['Regular', 'Bold', 'Italic', 'BoldItalic'] },
+      { family: 'Tiro Bangla', weights: ['Regular', 'Italic'] },
+      { family: 'Tiro Devanagari Hindi', weights: ['Regular', 'Italic'] },
+      { family: 'Tiro Devanagari Marathi', weights: ['Regular', 'Italic'] },
+      { family: 'Tiro Devanagari Sanskrit', weights: ['Regular', 'Italic'] },
+      { family: 'Tiro Gurmukhi', weights: ['Regular', 'Italic'] },
+      { family: 'Tiro Kannada', weights: ['Regular', 'Italic'] },
+      { family: 'Tiro Tamil', weights: ['Regular', 'Italic'] },
+      { family: 'Tiro Telugu', weights: ['Regular', 'Italic'] },
+      { family: 'Titillium Web', weights: ['ExtraLight', 'Light', 'Regular', 'SemiBold', 'Bold', 'Black', 'ExtraLightItalic', 'LightItalic', 'Italic', 'SemiBoldItalic', 'BoldItalic'] },
+      { family: 'Tomorrow', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Tourney', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Townsend', weights: ['Regular'] },
+      { family: 'Trade Winds', weights: ['Regular'] },
+      { family: 'Train One', weights: ['Regular'] },
+      { family: 'Trirong', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Trispace', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold'] },
+      { family: 'Trocchi', weights: ['Regular'] },
+      { family: 'Trochut', weights: ['Regular', 'Bold', 'Italic'] },
+      { family: 'Trykker', weights: ['Regular'] },
+      { family: 'Tulpen One', weights: ['Regular'] },
+      { family: 'Turret Road', weights: ['Light', 'Regular', 'Medium', 'Bold', 'ExtraBold'] },
+      { family: 'Twinkle Star', weights: ['Regular'] },
+      { family: 'Ubuntu', weights: ['Light', 'Regular', 'Medium', 'Bold', 'LightItalic', 'Italic', 'MediumItalic', 'BoldItalic'] },
+      { family: 'Ubuntu Condensed', weights: ['Regular'] },
+      { family: 'Ubuntu Mono', weights: ['Regular', 'Bold', 'Italic', 'BoldItalic'] },
+      { family: 'Uchen', weights: ['Regular'] },
+      { family: 'Ultra', weights: ['Regular'] },
+      { family: 'Unbounded', weights: ['Light', 'Regular', 'Medium', 'Bold', 'Black'] },
+      { family: 'Uncial Antiqua', weights: ['Regular'] },
+      { family: 'Underdog', weights: ['Regular'] },
+      { family: 'Unica One', weights: ['Regular'] },
+      { family: 'UnifrakturCook', weights: ['Bold'] },
+      { family: 'UnifrakturMaguntia', weights: ['Regular'] },
+      { family: 'Unkempt', weights: ['Regular', 'Bold'] },
+      { family: 'Unlock', weights: ['Regular'] },
+      { family: 'Unna', weights: ['Regular', 'Bold', 'Italic', 'BoldItalic'] },
+      { family: 'Updock', weights: ['Regular'] },
+      { family: 'Urbanist', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'VT323', weights: ['Regular'] },
+      { family: 'Vampiro One', weights: ['Regular'] },
+      { family: 'Varela', weights: ['Regular'] },
+      { family: 'Varela Round', weights: ['Regular'] },
+      { family: 'Varten', weights: ['Regular'] },
+      { family: 'Vast Shadow', weights: ['Regular'] },
+      { family: 'Vesper Libre', weights: ['Regular', 'Medium', 'Bold', 'Black'] },
+      { family: 'Viaoda Libre', weights: ['Regular'] },
+      { family: 'Vibes', weights: ['Regular'] },
+      { family: 'Vibur', weights: ['Regular'] },
+      { family: 'Vidaloka', weights: ['Regular'] },
+      { family: 'Viga', weights: ['Regular'] },
+      { family: 'Voces', weights: ['Regular'] },
+      { family: 'Volkhov', weights: ['Regular', 'Bold', 'Italic', 'BoldItalic'] },
+      { family: 'Vollkorn', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Vollkorn SC', weights: ['Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black'] },
+      { family: 'Voltaire', weights: ['Regular'] },
+      { family: 'Vujahday Script', weights: ['Regular'] },
+      { family: 'Waiting for the Sunrise', weights: ['Regular'] },
+      { family: 'Wallpoet', weights: ['Regular'] },
+      { family: 'Walter Turncoat', weights: ['Regular'] },
+      { family: 'Warnes', weights: ['Regular'] },
+      { family: 'Water Brush', weights: ['Regular'] },
+      { family: 'Waterfall', weights: ['Regular'] },
+      { family: 'Wellfleet', weights: ['Regular'] },
+      { family: 'Wendy One', weights: ['Regular'] },
+      { family: 'Whisper', weights: ['Regular'] },
+      { family: 'WindSong', weights: ['Regular', 'Medium'] },
+      { family: 'Wire One', weights: ['Regular'] },
+      { family: 'Work Sans', weights: ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Black', 'ThinItalic', 'ExtraLightItalic', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic', 'ExtraBoldItalic', 'BlackItalic'] },
+      { family: 'Wyatt', weights: ['Regular'] },
+      { family: 'Xanh Mono', weights: ['Regular', 'Italic'] },
+      { family: 'Yanone Kaffeesatz', weights: ['ExtraLight', 'Light', 'Regular', 'Bold'] },
+      { family: 'Yantramanav', weights: ['Thin', 'Light', 'Regular', 'Medium', 'Bold', 'Black'] },
+      { family: 'Yatra One', weights: ['Regular'] },
+      { family: 'Yellowtail', weights: ['Regular'] },
+      { family: 'Yeon Sung', weights: ['Regular'] },
+      { family: 'Yeseva One', weights: ['Regular'] },
+      { family: 'Yesteryear', weights: ['Regular'] },
+      { family: 'Yomogi', weights: ['Regular'] },
+      { family: 'Young Serif', weights: ['Regular'] },
+      { family: 'Yrsa', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic'] },
+      { family: 'Yuji Boku', weights: ['Regular'] },
+      { family: 'Yuji Mai', weights: ['Regular'] },
+      { family: 'Yuji Syuku', weights: ['Regular'] },
+      { family: 'Yusei Magic', weights: ['Regular'] },
+      { family: 'ZCOOL KuaiLe', weights: ['Regular'] },
+      { family: 'ZCOOL QingKe HuangYou', weights: ['Regular'] },
+      { family: 'ZCOOL XiaoWei', weights: ['Regular'] },
+      { family: 'Zen Antique', weights: ['Regular'] },
+      { family: 'Zen Antique Soft', weights: ['Regular'] },
+      { family: 'Zen Dots', weights: ['Regular'] },
+      { family: 'Zen Kaku Gothic Antique', weights: ['Light', 'Regular', 'Medium', 'Bold', 'Black'] },
+      { family: 'Zen Kaku Gothic New', weights: ['Light', 'Regular', 'Medium', 'Bold', 'Black'] },
+      { family: 'Zen Kurenaido', weights: ['Regular'] },
+      { family: 'Zen Loop', weights: ['Regular', 'Italic'] },
+      { family: 'Zen Maru Gothic', weights: ['Light', 'Regular', 'Medium', 'Bold', 'Black'] },
+      { family: 'Zen Old Mincho', weights: ['Regular', 'Medium', 'Bold'] },
+      { family: 'Zen Tokyo Zoo', weights: ['Regular'] },
+      { family: 'Zeyada', weights: ['Regular'] },
+      { family: 'Zhi Mang Xing', weights: ['Regular'] },
+      { family: 'Zilla Slab', weights: ['Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'LightItalic', 'Italic', 'MediumItalic', 'SemiBoldItalic', 'BoldItalic'] },
+      { family: 'Zilla Slab Highlight', weights: ['Regular', 'Bold'] }
+    ].sort((a, b) => a.family.localeCompare(b.family));
+
+
+
+
+    window.showFontPicker = (vId, mId, type, event) => {
+      currentPickerContext = { vId, mId, type };
+      pickerOverlay.style.display = 'block';
+      const picker = document.getElementById('variable-picker');
+      picker.style.display = 'flex';
+      
+      // Update UI for font picker - always show "Google Fonts"
+      document.getElementById('picker-title').textContent = 'Google Fonts';
+      
+      const rect = event.currentTarget.getBoundingClientRect();
+      picker.style.top = `${Math.min(rect.bottom + 5, window.innerHeight - 410)}px`;
+      picker.style.left = `${Math.min(rect.left, window.innerWidth - 270)}px`;
+      
+      pickerSearchInput.value = '';
+      pickerSearchInput.placeholder = type === 'family' ? "Search fonts" : "Select weight";
+      pickerSearchInput.focus();
+      
+      renderFontPickerOptions(type, '');
+    };
+
+    window.filterPickerResults = (query) => {
+      if (currentPickerContext?.type === 'family' || currentPickerContext?.type === 'weight') {
+        renderFontPickerOptions(currentPickerContext.type, query);
+      } else {
+        renderPickerList(query);
+      }
+    };
+
+    function renderFontPickerOptions(type, query = '') {
+      pickerList.innerHTML = '';
+      const { vId, mId } = currentPickerContext;
+      const data = activeCollection === 'modes' ? modesData : primitivesData;
+      const currentVar = data.variables.find(v => v.id === vId);
+
+      if (type === 'family') {
+        const filtered = GOOGLE_FONTS.filter(f => f.family.toLowerCase().includes(query.toLowerCase()));
+        
+        // Batch load font previews for visible items using modern CSS2 API
+        // We only load the "Regular" weight for the family list to keep it fast
+        const familiesToLoad = filtered.slice(0, 30);
+        if (familiesToLoad.length > 0) {
+          const linkId = 'google-fonts-picker-preview';
+          let link = document.getElementById(linkId);
+          if (!link) {
+            link = document.createElement('link');
+            link.id = linkId;
+            link.rel = 'stylesheet';
+            document.head.appendChild(link);
+          }
+          const familiesQuery = familiesToLoad.map(f => `family=${f.family.replace(/ /g, '+')}`).join('&');
+          link.href = `https://fonts.googleapis.com/css2?${familiesQuery}&display=swap`;
+        }
+
+        filtered.forEach(font => {
+          // Add the base family entry
+          const opt = document.createElement('div');
+          opt.className = 'font-picker-item';
+          opt.style.fontFamily = `"${font.family}"`;
+          opt.innerHTML = `<span>${font.family}</span>`;
+          opt.onclick = () => {
+            updateVariableValue(vId, mId, font.family);
+            syncSiblingWeight(data, currentVar, mId, font, 'Regular');
+            hidePicker();
+            renderTable(data);
+          };
+          pickerList.appendChild(opt);
+
+          // If searching or specifically for families like Abhaya Libre, show variants like in the image
+          if (query.length > 0 || ['Abhaya Libre', 'Alegreya', 'Inter', 'Montserrat', 'Roboto', 'Poppins'].includes(font.family)) {
+            font.weights.forEach(weight => {
+              if (weight === 'Regular') return; // Skip regular as it's the base family entry
+              const vOpt = document.createElement('div');
+              vOpt.className = 'font-picker-item variant';
+              vOpt.style.paddingLeft = '24px';
+              vOpt.style.fontSize = '11px';
+              vOpt.style.opacity = '0.8';
+              
+              const weightMap = {
+                'Thin': 100, 'ExtraLight': 200, 'Light': 300, 'Regular': 400,
+                'Medium': 500, 'SemiBold': 600, 'Bold': 700, 'ExtraBold': 800, 'Black': 900
+              };
+              const isItalic = weight.toLowerCase().includes('italic');
+              const baseWeight = weight.replace('Italic', '');
+              
+              vOpt.style.fontFamily = `"${font.family}"`;
+              vOpt.style.fontWeight = weightMap[baseWeight] || 400;
+              vOpt.style.fontStyle = isItalic ? 'italic' : 'normal';
+              
+              vOpt.innerHTML = `<span>${font.family} ${weight}</span>`;
+              vOpt.onclick = () => {
+                updateVariableValue(vId, mId, font.family);
+                syncSiblingWeight(data, currentVar, mId, font, weight);
+                hidePicker();
+                renderTable(data);
+              };
+              pickerList.appendChild(vOpt);
+            });
+          }
+        });
+      } else {
+        // ... (weight picker logic remains same)
+        renderWeightOptions(data, currentVar, mId, query);
+      }
+    }
+
+    function syncSiblingWeight(data, currentVar, mId, font, preferredWeight) {
+      const parts = currentVar.name.split('/');
+      const basePath = parts.slice(0, -1).join('/');
+      const weightVar = data.variables.find(v => {
+        const vParts = v.name.split('/');
+        const vBase = vParts.slice(0, -1).join('/');
+        const vLeaf = vParts[vParts.length - 1].toLowerCase().replace(/[-_]/g, ' ');
+        return vBase === basePath && vLeaf === 'font weight';
+      });
+      
+      if (weightVar) {
+        const targetWeight = font.weights.includes(preferredWeight) ? preferredWeight : (font.weights.includes('Regular') ? 'Regular' : font.weights[0]);
+        updateVariableValue(weightVar.id, mId, targetWeight);
+      }
+    }
+
+    function renderWeightOptions(data, currentVar, mId, query) {
+      // Find the sibling font family variable
+      const parts = currentVar.name.split('/');
+      const basePath = parts.slice(0, -1).join('/');
+      const familyVar = data.variables.find(v => {
+        const vParts = v.name.split('/');
+        const vBase = vParts.slice(0, -1).join('/');
+        const vLeaf = vParts[vParts.length - 1].toLowerCase().replace(/[-_]/g, ' ');
+        return vBase === basePath && vLeaf === 'font family';
+      });
+      
+      let currentFamily = 'Inter';
+      if (familyVar) {
+        const rawVal = familyVar.valuesByMode[mId];
+        if (rawVal && typeof rawVal === 'object' && rawVal.type === 'VARIABLE_ALIAS') {
+          const resolved = familyVar.resolvedValuesByMode?.[mId];
+          currentFamily = resolved?.resolvedValue || 'Inter';
+        } else {
+          currentFamily = rawVal || 'Inter';
+        }
+      }
+
+      const font = GOOGLE_FONTS.find(f => f.family === currentFamily) || GOOGLE_FONTS.find(f => f.family === 'Inter');
+      
+      if (font) {
+        const linkId = 'google-fonts-weights-preview';
+        let link = document.getElementById(linkId);
+        if (!link) {
+          link = document.createElement('link');
+          link.id = linkId;
+          link.rel = 'stylesheet';
+          document.head.appendChild(link);
+        }
+        const weightMap = {
+          'Thin': 100, 'ExtraLight': 200, 'Light': 300, 'Regular': 400,
+          'Medium': 500, 'SemiBold': 600, 'Bold': 700, 'ExtraBold': 800, 'Black': 900
+        };
+        
+        const variants = font.weights
+          .map(w => weightMap[w.replace('Italic', '')] || 400)
+          .filter((v, i, a) => a.indexOf(v) === i)
+          .join(';');
+        
+        link.href = `https://fonts.googleapis.com/css2?family=${font.family.replace(/ /g, '+')}:wght@${variants}&display=swap`;
+
+        const filteredWeights = font.weights.filter(w => w.toLowerCase().includes(query.toLowerCase()));
+        filteredWeights.forEach(weight => {
+          const opt = document.createElement('div');
+          opt.className = 'font-picker-item';
+          const isItalic = weight.toLowerCase().includes('italic');
+          const baseWeight = weight.replace('Italic', '');
+          const fontWeightNum = weightMap[baseWeight] || 400;
+          
+          opt.style.fontFamily = `"${font.family}"`;
+          opt.style.fontWeight = fontWeightNum;
+          opt.style.fontStyle = isItalic ? 'italic' : 'normal';
+          
+          opt.innerHTML = `<span>${weight}</span>`;
+          opt.onclick = () => {
+            updateVariableValue(currentVar.id, mId, weight);
+            hidePicker();
+            renderTable(data);
+          };
+          pickerList.appendChild(opt);
+        });
+      }
+    }
+
+    window.showPicker = (vId, mId, event) => {
+      // Find the current variable and its current alias if it exists
+      const targetVar = modesData.variables.find(v => v.id === vId) || primitivesData.variables.find(v => v.id === vId);
+      const currentAliasId = targetVar.valuesByMode[mId]?.id;
+      
+      currentPickerContext = { vId, mId, currentAliasId };
+      
+      // Position the picker near the clicked element
+      const rect = event.currentTarget.getBoundingClientRect();
+      const picker = document.getElementById('variable-picker');
+      
+      picker.style.top = `${Math.min(rect.bottom + 5, window.innerHeight - 330)}px`;
+      picker.style.left = `${Math.min(rect.left, window.innerWidth - 250)}px`;
+      
+      pickerOverlay.style.display = 'block';
+      pickerSearchInput.value = '';
+      pickerSearchInput.focus();
+      
+      renderPickerList('');
+    };
+
+    window.hidePicker = () => {
+      pickerOverlay.style.display = 'none';
+      currentPickerContext = null;
+    };
+
+    window.filterPickerResults = (query) => {
+      if (currentPickerContext?.type === 'family' || currentPickerContext?.type === 'weight') {
+        renderFontPickerOptions(currentPickerContext.type, query);
+      } else {
+        renderPickerList(query);
+      }
+    };
+
+    function renderPickerList(query) {
+      pickerList.innerHTML = '';
+      if (!currentPickerContext) return;
+
+      const { vId, currentAliasId } = currentPickerContext;
+      const targetVar = modesData.variables.find(v => v.id === vId) || primitivesData.variables.find(v => v.id === vId);
+      if (!targetVar) return;
+
+      // Group variables by collection for the picker
+      const collections = [
+        { name: 'Primitives', vars: primitivesData.variables },
+        { name: 'Modes (Desktop / Mobile)', vars: modesData.variables }
+      ];
+
+      collections.forEach(coll => {
+        const filtered = coll.vars.filter(v => {
+          // Same type check
+          if (v.type !== targetVar.type) return false;
+          // Search query check
+          if (query && !v.name.toLowerCase().includes(query.toLowerCase())) return false;
+          // Prevent self-linking
+          if (v.id === vId) return false;
+          return true;
+        });
+
+        if (filtered.length > 0) {
+          const title = document.createElement('div');
+          title.className = 'picker-group-title';
+          title.textContent = coll.name;
+          pickerList.appendChild(title);
+
+          filtered.forEach(v => {
+            const opt = document.createElement('div');
+            const isSelected = v.id === currentAliasId;
+            opt.className = `picker-option ${isSelected ? 'selected' : ''}`;
+            
+            let typeIcon = '#';
+            if (v.type === 'COLOR') typeIcon = '◐';
+            if (v.type === 'STRING') typeIcon = 'T';
+            if (v.type === 'BOOLEAN') typeIcon = 'B';
+
+            opt.innerHTML = `
+              <span class="type-icon">${typeIcon}</span>
+              <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${v.name}</span>
+              ${isSelected ? '<svg viewBox="0 0 24 24" style="width:12px;height:12px;color:var(--accent);"><path d="M20 6L9 17L4 12" stroke-width="3"></path></svg>' : ''}
+            `;
+            opt.onclick = () => selectPickerVariable(v.id, v.name);
+            pickerList.appendChild(opt);
+            
+            if (isSelected && !query) {
+              // Scroll to the selected item on initial load
+              setTimeout(() => opt.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50);
+            }
+          });
+        }
+      });
+
+      if (pickerList.innerHTML === '') {
+        pickerList.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--muted); font-size: 11px;">No matching variables found</div>';
+      }
+    }
+
+    function selectPickerVariable(targetVId, targetName) {
+      if (!currentPickerContext) return;
+      saveToHistory();
+      const { vId, mId } = currentPickerContext;
+
+      const findAndReplace = (data) => {
+        const v = data.variables.find(item => item.id === vId);
+        if (v) {
+          v.valuesByMode[mId] = { type: 'VARIABLE_ALIAS', id: targetVId };
+          // Also update resolved name for UI
+          if (!v.resolvedValuesByMode) v.resolvedValuesByMode = {};
+          if (!v.resolvedValuesByMode[mId]) v.resolvedValuesByMode[mId] = {};
+          v.resolvedValuesByMode[mId].aliasName = targetName;
+          
+          // Try to resolve the value if it exists in current data
+          const sourceVar = modesData.variables.find(sv => sv.id === targetVId) || primitivesData.variables.find(sv => sv.id === targetVId);
+          if (sourceVar) {
+            // This is a simplified resolution, but good enough for UI preview
+            const sourceVal = sourceVar.valuesByMode[Object.keys(sourceVar.valuesByMode)[0]];
+            v.resolvedValuesByMode[mId].resolvedValue = sourceVal;
+          }
+
+          renderTable(data);
+        }
+      };
+
+      findAndReplace(modesData);
+      findAndReplace(primitivesData);
+      hidePicker();
+    }
+  </script>
+</body>
+</html>

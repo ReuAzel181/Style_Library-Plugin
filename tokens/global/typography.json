@@ -1,0 +1,49 @@
+{
+  "global": {
+    "typography": {
+      "font-family": {
+        "sans": { "value": "Inter, system-ui, sans-serif", "type": "fontFamily" },
+        "mono": { "value": "JetBrains Mono, monospace", "type": "fontFamily" }
+      },
+      "font-weight": {
+        "regular": { "value": "400", "type": "fontWeight" },
+        "medium": { "value": "500", "type": "fontWeight" },
+        "semibold": { "value": "600", "type": "fontWeight" },
+        "bold": { "value": "700", "type": "fontWeight" }
+      },
+      "heading": {
+        "h1": {
+          "desktop": { "value": "48px", "type": "dimension" },
+          "mobile": { "value": "32px", "type": "dimension" }
+        },
+        "h2": {
+          "desktop": { "value": "36px", "type": "dimension" },
+          "mobile": { "value": "24px", "type": "dimension" }
+        },
+        "h3": {
+          "desktop": { "value": "30px", "type": "dimension" },
+          "mobile": { "value": "20px", "type": "dimension" }
+        },
+        "h4": {
+          "desktop": { "value": "24px", "type": "dimension" },
+          "mobile": { "value": "18px", "type": "dimension" }
+        },
+        "h5": {
+          "desktop": { "value": "20px", "type": "dimension" },
+          "mobile": { "value": "16px", "type": "dimension" }
+        },
+        "h6": {
+          "desktop": { "value": "18px", "type": "dimension" },
+          "mobile": { "value": "14px", "type": "dimension" }
+        }
+      },
+      "body": {
+        "xl": { "value": "20px", "type": "dimension" },
+        "lg": { "value": "18px", "type": "dimension" },
+        "md": { "value": "16px", "type": "dimension" },
+        "sm": { "value": "14px", "type": "dimension" },
+        "xs": { "value": "12px", "type": "dimension" }
+      }
+    }
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "component": {
+    "input": {
+      "default": {
+        "background": { "value": "{primitive.color.white}", "type": "color" },
+        "text": { "value": "{primitive.color.neutral.900}", "type": "color" },
+        "border": { "value": "{primitive.color.neutral.300}", "type": "color" },
+        "placeholder": { "value": "{primitive.color.neutral.400}", "type": "color" },
+        "radius": { "value": "{primitive.radius.md}", "type": "dimension" },
+        "padding-x": { "value": "{primitive.spacing.3}", "type": "dimension" },
+        "padding-y": { "value": "{primitive.spacing.2}", "type": "dimension" },
+        "font-size": { "value": "{global.typography.body.md}", "type": "dimension" },
+        "shadow": { "value": "{global.semantic.color.shadow.sm}", "type": "shadow" }
+      },
+      "hover": {
+        "border": { "value": "{primitive.color.neutral.400}", "type": "color" }
+      },
+      "focus": {
+        "border": { "value": "{global.semantic.color.border.focus}", "type": "color" },
+        "ring-color": { "value": "{primitive.color.brand.100}", "type": "color" },
+        "ring-width": { "value": "4px", "type": "dimension" }
+      },
+      "error": {
+        "border": { "value": "#f05252", "type": "color" },
+        "ring-color": { "value": "#fde8e8", "type": "color" }
+      },
+      "disabled": {
+        "background": { "value": "{primitive.color.neutral.50}", "type": "color" },
+        "text": { "value": "{primitive.color.neutral.400}", "type": "color" },
+        "border": { "value": "{primitive.color.neutral.200}", "type": "color" },
+        "opacity": { "value": "{primitive.opacity.50}", "type": "number" }
+      }
+    }
+  }
+}
