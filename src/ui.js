@@ -1,3 +1,5 @@
+import { GOOGLE_FONTS } from "./google-fonts.js";
+
     const statusMsg = document.getElementById('status-msg');
     const progressFill = document.getElementById('progress-fill');
     const progressTrack = document.getElementById('progress-track');
@@ -70,6 +72,19 @@
         renderTable(data);
       }
     }
+
+    document.addEventListener('click', (e) => {
+      const isColorModalOpen = cpModal.style.display === 'flex';
+      const isVariablePickerOpen = pickerOverlay.style.display === 'block';
+
+      if (isColorModalOpen && !cpModal.contains(e.target) && !e.target.closest('.color-opacity-row')) {
+        hideColorPicker();
+      }
+      
+      if (isVariablePickerOpen && !pickerOverlay.querySelector('.variable-picker').contains(e.target) && !e.target.closest('.table-input') && !e.target.closest('.link-btn')) {
+        hidePicker();
+      }
+    });
 
     // Keyboard Shortcuts
     window.addEventListener('keydown', (e) => {
@@ -214,7 +229,7 @@
         modesData = msg.preview.modes;
         primitivesData = msg.preview.primitives;
         
-        renderSidebar();
+        selectCollection('modes');
         
         if (modesExist && primitivesExist) {
           actionBtn.disabled = true;
@@ -230,7 +245,7 @@
         actionBtn.textContent = 'Sync to Variables';
         actionBtn.disabled = false;
         
-        selectCollection('primitives');
+        selectCollection('modes');
         updateStatus('Review content before syncing');
       }
 
@@ -250,8 +265,8 @@
     function renderSidebar() {
       collectionList.innerHTML = '';
       const items = [
-        { id: 'primitives', name: 'Primitives', exists: primitivesExist, count: primitivesData ? primitivesData.variables.length : 0 },
-        { id: 'modes', name: 'Modes (Desktop / Mobile)', exists: modesExist, count: modesData ? modesData.variables.length : 0 }
+        { id: 'modes', name: 'Modes (Desktop / Mobile)', exists: modesExist, count: modesData ? modesData.variables.length : 0 },
+        { id: 'primitives', name: 'Primitives', exists: primitivesExist, count: primitivesData ? primitivesData.variables.length : 0 }
       ];
 
       items.forEach(item => {
@@ -377,27 +392,69 @@
     }
 
     function selectCollection(id) {
-      const listContainer = document.querySelector('.sidebar-list-container');
-      listContainer.style.opacity = '0';
+      activeCollection = id;
+      activeGroupPath = 'All';
+      collapsedGroups.clear();
+      renderSidebar();
       
-      setTimeout(() => {
-        activeCollection = id;
-        activeGroupPath = 'All';
-        collapsedGroups.clear();
-        renderSidebar();
-        
-        const data = id === 'modes' ? modesData : primitivesData;
-        const exists = id === 'modes' ? modesExist : primitivesExist;
-        
-        viewTitle.textContent = data.name;
-        duplicateNotice.style.display = exists ? 'flex' : 'none';
-        
-        if (state === 'sync') {
-          renderTable(data);
-        }
-        listContainer.style.opacity = '1';
-      }, 200);
+      const data = id === 'modes' ? modesData : primitivesData;
+      const exists = id === 'modes' ? modesExist : primitivesExist;
+      
+      viewTitle.textContent = data.name;
+      duplicateNotice.style.display = exists ? 'flex' : 'none';
+      
+      if (state === 'sync') {
+        renderTable(data);
+      }
     }
+
+    window.addVariable = function(type, groupPath) {
+      saveToHistory();
+      const data = activeCollection === 'modes' ? modesData : primitivesData;
+      if (!data) return;
+
+      let baseName = groupPath === 'All' ? 'New Variable' : `${groupPath}/New Variable`;
+      let newName = baseName;
+      let counter = 1;
+      while (data.variables.some(v => v.name === newName)) {
+        newName = `${baseName} ${counter}`;
+        counter++;
+      }
+
+      const newVar = {
+        id: 'var_' + Date.now() + Math.floor(Math.random() * 1000),
+        name: newName,
+        type: type,
+        valuesByMode: {}
+      };
+
+      Object.keys(data.modes).forEach(mId => {
+        if (type === 'STRING') newVar.valuesByMode[mId] = "";
+        else if (type === 'COLOR') newVar.valuesByMode[mId] = { r: 0, g: 0, b: 0, a: 1 };
+        else if (type === 'FLOAT') newVar.valuesByMode[mId] = 0;
+        else if (type === 'BOOLEAN') newVar.valuesByMode[mId] = false;
+      });
+
+      data.variables.push(newVar);
+      renderTable(data);
+      renderGroups();
+
+      setTimeout(() => {
+        focusInput(`in-${newVar.id}`);
+      }, 50);
+    };
+
+    window.deleteVariable = function(vId) {
+      if (!confirm("Are you sure you want to delete this variable?")) return;
+      saveToHistory();
+
+      const data = activeCollection === 'modes' ? modesData : primitivesData;
+      if (!data) return;
+
+      data.variables = data.variables.filter(v => v.id !== vId);
+      renderTable(data);
+      renderSidebar();
+    };
 
     function renderTable(data) {
       const modeKeys = Object.keys(data.modes);
@@ -414,7 +471,7 @@
           <thead>
             <tr>
               <th class="col-name">Name</th>
-              ${modeNames.map(name => `<th class="col-mode">${name}</th>`).join('')}
+              ${modeNames.map(name => `<th class="col-mode">${name === 'Mode 1' ? 'Value' : name}</th>`).join('')}
               <th class="col-empty"></th>
             </tr>
           </thead>
@@ -439,8 +496,8 @@
         const parts = v.name.split('/');
         const leafName = parts[parts.length - 1];
         const normalizedLeaf = leafName.toLowerCase().replace(/[-_]/g, ' ');
-        const isFontFamily = normalizedLeaf.includes('font family');
-        const isFontWeight = normalizedLeaf.includes('font weight');
+        const isFontFamily = normalizedLeaf.includes('font family') || normalizedLeaf === 'family';
+        const isFontWeight = normalizedLeaf.includes('font weight') || normalizedLeaf === 'weight';
         
         let typeSymbol = '#';
         if (v.type === 'COLOR') typeSymbol = '◐';
@@ -526,13 +583,56 @@
                 `;
               }
 
-              // Font specific UI
+                // Font specific UI
               if (isFontFamily || isFontWeight) {
-                const displayVal = typeof val === 'object' ? JSON.stringify(val) : (val ?? '');
+                let displayVal = typeof val === 'object' ? JSON.stringify(val) : (val ?? '');
+                
+                // Helper to get family and weight context
+                let currentFamily = 'sans-serif';
+                let currentWeight = '400';
+                
+                if (isFontFamily) {
+                  currentFamily = typeof val === 'string' ? val : 'sans-serif';
+                } else if (isFontWeight) {
+                  // Try to find sibling font family to pair with this weight
+                  const parts = v.name.split('/');
+                  const parentPath = parts.slice(0, -1).join('/');
+                  const siblingVars = data.variables.filter(sv => sv.name.startsWith(parentPath));
+                  const familyVar = siblingVars.find(sv => {
+                    const leaf = sv.name.split('/').pop().toLowerCase().replace(/[-_]/g, ' ');
+                    return leaf.includes('font family') || leaf === 'family';
+                  });
+                  if (familyVar && familyVar.valuesByMode[mId]) {
+                     const fVal = familyVar.valuesByMode[mId];
+                     currentFamily = typeof fVal === 'string' ? fVal : 'sans-serif';
+                  }
+                  
+                  let rawWeight = val;
+                  if (rawWeight && typeof rawWeight === 'object' && rawWeight.type === 'VARIABLE_ALIAS') {
+                    rawWeight = v.resolvedValuesByMode?.[mId]?.resolvedValue;
+                  }
+                  
+                  const weightName = getFontWeightName(rawWeight || '400');
+                  displayVal = formatFigmaWeight(weightName);
+                  
+                  // Make sure the underlying data reflects the string format if it was previously an integer
+                  if (typeof val === 'number' || (typeof val === 'string' && /^\d+$/.test(val))) {
+                     v.valuesByMode[mId] = displayVal;
+                  }
+                  
+                  const numeric = getFontWeightNum(rawWeight || 400);
+                  currentWeight = String(numeric);
+                }
+                
+                // Pre-load the font to avoid FOUT
+                if (currentFamily !== 'sans-serif') {
+                  loadGoogleFont(currentFamily);
+                }
+
                 return `
                   <td onclick="showFontPicker('${v.id}', '${mId}', '${isFontFamily ? 'family' : 'weight'}', event)">
                     <div class="cell-content">
-                      <input type="text" class="table-input" id="val-${v.id}-${mId}" value="${displayVal}" readonly style="cursor: pointer;">
+                      <input type="text" class="table-input font-preview-input" id="val-${v.id}-${mId}" value="${displayVal}" readonly style="cursor: pointer; font-family: '${currentFamily}', sans-serif; font-weight: ${currentWeight};">
                       <div class="link-btn" title="Link to Variable" onclick="showPicker('${v.id}', '${mId}', event); event.stopPropagation();">
                         ${hexagonIcon}
                       </div>
@@ -543,11 +643,12 @@
 
               // Default Text/Number input
               const displayVal = typeof val === 'object' ? JSON.stringify(val) : (val ?? '');
+              const isNumber = v.type === 'FLOAT';
               return `
                 <td onclick="focusInput('val-${v.id}-${mId}')">
                   <div class="cell-content">
                     <input type="text" class="table-input" id="val-${v.id}-${mId}" value="${displayVal}" placeholder="Value"
-                      onblur="updateVariableValue('${v.id}', '${mId}', this.value)" onkeydown="if(event.key==='Enter') this.blur()">
+                      onblur="updateVariableValue('${v.id}', '${mId}', this.value)" onkeydown="if(event.key==='Enter') this.blur(); ${isNumber ? `if(event.key==='ArrowUp'||event.key==='ArrowDown'){event.preventDefault(); let val=parseFloat(this.value)||0; val+=(event.key==='ArrowUp'?1:-1)*(event.shiftKey?8:1); this.value=val; updateVariableValue('${v.id}','${mId}',val);}` : ''}">
                     <div class="link-btn" title="Link to Variable" onclick="showPicker('${v.id}', '${mId}', event); event.stopPropagation();">
                       ${hexagonIcon}
                     </div>
@@ -555,12 +656,29 @@
                 </td>
               `;
             }).join('')}
-            <td class="col-empty"></td>
+            <td class="col-empty" style="width: 1%; white-space: nowrap; padding-right: 8px;">
+              <div class="delete-btn" onclick="deleteVariable('${v.id}')" title="Delete Variable" style="cursor:pointer; opacity:0.5; display:inline-flex; align-items:center; justify-content:center; padding: 4px 8px; border-radius: 4px; font-size: 14px;">✕</div>
+            </td>
           </tr>
         `;
       });
 
-      html += '</tbody></table>';
+      const existingTypes = new Set(filteredVars.map(v => v.type));
+      const showString = existingTypes.size === 0 || existingTypes.has('STRING');
+      const showColor = existingTypes.size === 0 || existingTypes.has('COLOR');
+      const showFloat = existingTypes.size === 0 || existingTypes.has('FLOAT');
+      const showBoolean = existingTypes.size === 0 || existingTypes.has('BOOLEAN');
+
+      html += `
+          </tbody>
+        </table>
+        <div style="padding: 12px; display: flex; gap: 8px; border-top: 1px solid var(--border);">
+          ${showString ? `<button class="add-var-btn" onclick="addVariable('STRING', activeGroupPath)" style="padding: 6px 12px; font-size: 11px; cursor: pointer; border-radius: 4px; background: var(--bg-hover); border: 1px solid var(--border); color: var(--fg);">+ Add String</button>` : ''}
+          ${showColor ? `<button class="add-var-btn" onclick="addVariable('COLOR', activeGroupPath)" style="padding: 6px 12px; font-size: 11px; cursor: pointer; border-radius: 4px; background: var(--bg-hover); border: 1px solid var(--border); color: var(--fg);">+ Add Color</button>` : ''}
+          ${showFloat ? `<button class="add-var-btn" onclick="addVariable('FLOAT', activeGroupPath)" style="padding: 6px 12px; font-size: 11px; cursor: pointer; border-radius: 4px; background: var(--bg-hover); border: 1px solid var(--border); color: var(--fg);">+ Add Number</button>` : ''}
+          ${showBoolean ? `<button class="add-var-btn" onclick="addVariable('BOOLEAN', activeGroupPath)" style="padding: 6px 12px; font-size: 11px; cursor: pointer; border-radius: 4px; background: var(--bg-hover); border: 1px solid var(--border); color: var(--fg);">+ Add Boolean</button>` : ''}
+        </div>
+      `;
       tableContainer.innerHTML = html;
     }
 
@@ -620,6 +738,7 @@
     const cpInputContainer = document.getElementById('cp-input-container');
 
     window.openColorPicker = (vId, mId, event) => {
+      event.stopPropagation();
       cpContext = { vId, mId };
       const targetVar = modesData.variables.find(v => v.id === vId) || primitivesData.variables.find(v => v.id === vId);
       const val = targetVar.valuesByMode[mId] || { r: 0, g: 0, b: 0, a: 1 };
@@ -652,10 +771,6 @@
       cpHue.value = h;
       cpAlpha.value = a * 100;
       
-      // Update labels
-      cpHueLabel.textContent = `Hue ${Math.round(h)}°`;
-      cpAlphaLabel.textContent = `Opacity ${Math.round(a * 100)}%`;
-      
       // Update Alpha slider background
       const rgb = hslToRgb(h, s, l);
       const isDark = document.body.classList.contains('dark');
@@ -677,28 +792,32 @@
 
       if (mode === 'HSL') {
         inputGroup.innerHTML = `
-          <input type="number" class="cp-input" value="${Math.round(h)}" oninput="updateCPColor('h', this.value)">
-          <input type="number" class="cp-input" value="${Math.round(s)}" oninput="updateCPColor('s', this.value)">
-          <input type="number" class="cp-input" value="${Math.round(l)}" oninput="updateCPColor('l', this.value)">
-          <input type="number" class="cp-input" value="${Math.round(a*100)}" oninput="updateCPColor('a', this.value/100)">
+          <input type="number" class="cp-input" value="${Math.round(h)}" oninput="updateCPColor('h', this.value)" onkeydown="handleNumberKeydown(event, 'h')">
+          <input type="number" class="cp-input" value="${Math.round(s)}" oninput="updateCPColor('s', this.value)" onkeydown="handleNumberKeydown(event, 's')">
+          <input type="number" class="cp-input" value="${Math.round(l)}" oninput="updateCPColor('l', this.value)" onkeydown="handleNumberKeydown(event, 'l')">
+          <input type="number" class="cp-input" value="${Math.round(a*100)}" oninput="updateCPColor('a', this.value/100)" onkeydown="handleNumberKeydown(event, 'a', true)">
           <span class="cp-input-percent">%</span>
         `;
       } else if (mode === 'RGB') {
         const rgb = hslToRgb(h, s, l);
         inputGroup.innerHTML = `
-          <input type="number" class="cp-input" value="${Math.round(rgb.r)}" oninput="updateCPRGB('r', this.value)">
-          <input type="number" class="cp-input" value="${Math.round(rgb.g)}" oninput="updateCPRGB('g', this.value)">
-          <input type="number" class="cp-input" value="${Math.round(rgb.b)}" oninput="updateCPRGB('b', this.value)">
-          <input type="number" class="cp-input" value="${Math.round(a*100)}" oninput="updateCPColor('a', this.value/100)">
+          <input type="number" class="cp-input" value="${Math.round(rgb.r)}" oninput="updateCPRGB('r', this.value)" onkeydown="handleNumberKeydown(event, 'r')">
+          <input type="number" class="cp-input" value="${Math.round(rgb.g)}" oninput="updateCPRGB('g', this.value)" onkeydown="handleNumberKeydown(event, 'g')">
+          <input type="number" class="cp-input" value="${Math.round(rgb.b)}" oninput="updateCPRGB('b', this.value)" onkeydown="handleNumberKeydown(event, 'b')">
+          <input type="number" class="cp-input" value="${Math.round(a*100)}" oninput="updateCPColor('a', this.value/100)" onkeydown="handleNumberKeydown(event, 'a', true)">
           <span class="cp-input-percent">%</span>
         `;
       } else {
         const rgb = hslToRgb(h, s, l);
-        const hex = rgbToHex(rgb.r, rgb.g, rgb.b);
+        const hex = rgbToHex(rgb.r, rgb.g, rgb.b).replace('#', '');
         inputGroup.innerHTML = `
-          <input type="text" class="cp-input" style="flex: 2;" value="${hex}" oninput="updateCPHex(this.value)">
-          <input type="number" class="cp-input" value="${Math.round(a*100)}" oninput="updateCPColor('a', this.value/100)">
-          <span class="cp-input-percent">%</span>
+          <div style="display: flex; align-items: center; width: 100%; gap: 6px;">
+            <input type="text" class="cp-input" style="flex: 1; text-align: left;" value="${hex.toUpperCase()}" oninput="updateCPHex(this.value)">
+            <div style="display: flex; align-items: center; background: var(--bg-hover); border-radius: 4px;">
+              <input type="number" class="cp-input" style="width: 40px; text-align: right;" value="${Math.round(a*100)}" oninput="updateCPColor('a', this.value/100)" onkeydown="handleNumberKeydown(event, 'a', true)">
+              <span class="cp-input-percent" style="padding-right: 8px; font-size: 11px; opacity: 0.5;">%</span>
+            </div>
+          </div>
         `;
       }
       
@@ -712,10 +831,68 @@
       }
     };
 
-    window.updateCPColor = (key, val) => {
-      cpColor[key] = parseFloat(val);
+    window.updateCPColor = (key, val, event = null) => {
+      let num = parseFloat(val);
+      if (event && event.type === 'keydown') {
+        if (event.key === 'ArrowUp') num += event.shiftKey ? 10 : 1;
+        if (event.key === 'ArrowDown') num -= event.shiftKey ? 10 : 1;
+        event.preventDefault();
+      }
+      if (key === 'a') num = Math.max(0, Math.min(1, num));
+      cpColor[key] = num;
       updateCPUI();
       applyCPColor();
+    };
+
+    window.handleNumberKeydown = (e, key, isAlpha = false) => {
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        let val = parseFloat(e.target.value);
+        const step = e.shiftKey ? 10 : 1;
+        val += e.key === 'ArrowUp' ? step : -step;
+        
+        // Clamp logic
+        if (isAlpha) {
+          val = Math.max(0, Math.min(100, val));
+        } else if (key === 'h') {
+          val = Math.max(0, Math.min(360, val));
+        } else if (key === 's' || key === 'l') {
+          val = Math.max(0, Math.min(100, val));
+        } else if (key === 'r' || key === 'g' || key === 'b') {
+          val = Math.max(0, Math.min(255, val));
+        }
+
+        e.target.value = val;
+        
+        // Direct value update without stealing focus via re-render
+        if (isAlpha) {
+          cpColor[key] = val / 100;
+        } else if (key === 'r' || key === 'g' || key === 'b') {
+          const { h, s, l } = cpColor;
+          const rgb = hslToRgb(h, s, l);
+          rgb[key] = val;
+          const newHsl = rgbToHsl(rgb.r/255, rgb.g/255, rgb.b/255, cpColor.a);
+          cpColor.h = newHsl.h; cpColor.s = newHsl.s; cpColor.l = newHsl.l;
+        } else {
+          cpColor[key] = val;
+        }
+        
+        // Update visual sliders/gradient without re-rendering inputs
+        const { h, s, l, a } = cpColor;
+        cpSatVal.style.backgroundColor = `hsl(${h}, 100%, 50%)`;
+        cpCursor.style.left = `${s}%`;
+        cpCursor.style.top = `${100 - l}%`;
+        cpHue.value = h;
+        cpAlpha.value = a * 100;
+        const rgb = hslToRgb(h, s, l);
+        const isDark = document.body.classList.contains('dark');
+        const c1 = isDark ? '#222' : '#eee';
+        const c2 = isDark ? '#333' : '#fff';
+        cpAlpha.style.color = `rgba(${rgb.r},${rgb.g},${rgb.b},1)`;
+        cpAlpha.style.backgroundImage = `linear-gradient(to right, rgba(${rgb.r},${rgb.g},${rgb.b},0), rgba(${rgb.r},${rgb.g},${rgb.b},1)), conic-gradient(${c1} 0.25turn, ${c2} 0.25turn 0.5turn, ${c1} 0.5turn 0.75turn, ${c2} 0.75turn)`;
+        
+        applyCPColor();
+      }
     };
 
     window.updateCPRGB = (key, val) => {
@@ -728,6 +905,20 @@
       cpColor.l = newHsl.l;
       updateCPUI();
       applyCPColor();
+    };
+
+    window.activateEyeDropper = () => {
+      if (!window.EyeDropper) {
+        alert('Your browser does not support the EyeDropper API');
+        return;
+      }
+      const eyeDropper = new EyeDropper();
+      eyeDropper.open().then(result => {
+        const hex = result.sRGBHex;
+        updateCPHex(hex);
+      }).catch(e => {
+        console.error(e);
+      });
     };
 
     window.updateCPHex = (hex) => {
@@ -833,20 +1024,171 @@
       saveToHistory();
       const v = modesData.variables.find(item => item.id === vId) || primitivesData.variables.find(item => item.id === vId);
       if (v) {
-        if (v.type === 'FLOAT') v.valuesByMode[mId] = parseFloat(val);
-        else v.valuesByMode[mId] = val;
+        if (v.type === 'FLOAT') {
+          const num = parseFloat(val);
+          if (!isNaN(num)) v.valuesByMode[mId] = num;
+        } else {
+          v.valuesByMode[mId] = val;
+        }
       }
     };
 
     // Variable Picker Logic
     let currentPickerContext = null;
+    let pickerIndex = -1;
+    let pickerItems = [];
     const pickerOverlay = document.getElementById('picker-overlay');
     const pickerList = document.getElementById('picker-list');
     const pickerSearchInput = document.getElementById('picker-search-input');
 
+    // Font Picker Logic
+    
 
 
 
+
+    // Font Loader for eager + lazy preview loading
+    const fontLoader = {
+      loaded: new Set(),
+      queue: new Map(),
+      timeout: null,
+      observer: null,
+      init() {
+        if (this.observer) return;
+        this.observer = new IntersectionObserver((entries) => {
+          entries.forEach(entry => {
+            if (entry.isIntersecting) {
+              const el = entry.target;
+              this.load(el.dataset.family, el.dataset.weight, el.dataset.style);
+              this.observer.unobserve(el);
+            }
+          });
+        }, { root: document.getElementById('picker-list'), rootMargin: '500px' });
+      },
+      observe(el) {
+        if (!this.observer) this.init();
+        this.observer.observe(el);
+      },
+      load(family, weight = '400', style = 'normal') {
+        if (!family) return;
+        const key = `${family}:${weight}:${style}`;
+        if (this.loaded.has(key)) return;
+        if (!this.queue.has(family)) this.queue.set(family, new Set());
+        this.queue.get(family).add(`${weight}:${style}`);
+        this.loaded.add(key);
+        clearTimeout(this.timeout);
+        this.timeout = setTimeout(() => this.flush(), 50);
+      },
+      flush() {
+        if (this.queue.size === 0) return;
+        const families = Array.from(this.queue.keys());
+        const batch = families.slice(0, 20);
+        const queries = batch.map(family => {
+          const specs = Array.from(this.queue.get(family));
+          const parsed = specs.map(spec => {
+            const [w, s] = spec.split(':');
+            return { w, ital: s === 'italic' ? 1 : 0 };
+          });
+          const italNeeded = parsed.some(p => p.ital === 1);
+          if (italNeeded) {
+            const variantList = Array.from(new Set(parsed.map(p => `${p.ital},${p.w}`)))
+              .sort()
+              .join(';');
+            return `family=${family.replace(/ /g, '+')}:ital,wght@${variantList}`;
+          } else {
+            const weights = Array.from(new Set(parsed.map(p => p.w))).sort().join(';');
+            return `family=${family.replace(/ /g, '+')}:wght@${weights}`;
+          }
+        });
+        const url = `https://fonts.googleapis.com/css2?${queries.join('&')}&display=swap`;
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = url;
+        document.head.appendChild(link);
+        batch.forEach(f => this.queue.delete(f));
+        if (this.queue.size > 0) this.timeout = setTimeout(() => this.flush(), 50);
+      }
+    };
+
+    // Ensure a font is actually loaded for accurate preview
+    function ensureFontLoaded(family, weight = 400, style = 'normal') {
+      if (!('fonts' in document)) return Promise.resolve();
+      const desc = `${style === 'italic' ? 'italic ' : ''}${weight} 16px "${family}"`;
+      return document.fonts.load(desc).catch(() => {});
+    }
+
+    // Prefetch a visible chunk of families with a safe base weight
+    function prefetchFamilies(families) {
+      if (!families.length) return;
+      const chunkSize = 10;
+      for (let i = 0; i < families.length; i += chunkSize) {
+        const chunk = families.slice(i, i + chunkSize);
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = `https://fonts.googleapis.com/css2?${chunk
+          .map(f => `family=${f.family.replace(/ /g, '+')}:wght@400`)
+          .join('&')}&display=swap`;
+        document.head.appendChild(link);
+      }
+    }
+
+    // Optional: load catalog from Google Web Fonts API if a key is present
+    function getFonts() {
+      return GOOGLE_FONTS;
+    }
+
+    const WEIGHT_MAP = {
+      'Thin': 100, 'ExtraLight': 200, 'Light': 300, 'Regular': 400,
+      'Medium': 500, 'SemiBold': 600, 'Bold': 700, 'ExtraBold': 800, 'Black': 900
+    };
+
+    function getFontWeightNum(name) {
+      const base = String(name).replace(/Italic/i, '').replace(/\s+/g, '').trim() || 'Regular';
+      return WEIGHT_MAP[base] || parseInt(name) || 400;
+    }
+
+    function getFontWeightName(numOrName) {
+      const strVal = String(numOrName).trim();
+      const numMatch = strVal.match(/^(\d+)(italic)?$/i);
+      if (numMatch) {
+        const num = parseInt(numMatch[1]);
+        const isItalic = !!numMatch[2];
+        let baseName = 'Regular';
+        for (const [name, value] of Object.entries(WEIGHT_MAP)) {
+          if (value === num) {
+            baseName = name;
+            break;
+          }
+        }
+        return isItalic ? baseName + 'Italic' : baseName;
+      }
+      return strVal.replace(/\s+/g, '');
+    }
+
+    function formatFigmaWeight(weight) {
+      // Keep it exactly as it is, no spaces injected
+      return weight.replace(/\s+/g, '');
+    }
+
+    function unformatFigmaWeight(weight) {
+      return weight.replace(/\s+/g, '');
+    }
+
+    function mapVariantToName(variant) {
+      const wMap = { '100':'Thin','200':'ExtraLight','300':'Light','400':'Regular','500':'Medium','600':'SemiBold','700':'Bold','800':'ExtraBold','900':'Black' };
+      if (variant === 'regular') return 'Regular';
+      if (variant === 'italic') return 'Italic';
+      const m = variant.match(/^([0-9]{3})(italic)?$/);
+      if (m) {
+        const base = wMap[m[1]] || 'Regular';
+        return m[2] ? base + 'Italic' : base;
+      }
+      return 'Regular';
+    }
+    let catalogLoading = false;
+    async function ensureGoogleCatalogLoaded() {
+      // Disabled: using GOOGLE_FONTS as source of truth
+    }
 
     window.showFontPicker = (vId, mId, type, event) => {
       currentPickerContext = { vId, mId, type };
@@ -865,6 +1207,7 @@
       pickerSearchInput.placeholder = type === 'family' ? "Search fonts" : "Select weight";
       pickerSearchInput.focus();
       
+      ensureGoogleCatalogLoaded();
       renderFontPickerOptions(type, '');
     };
 
@@ -874,7 +1217,41 @@
       } else {
         renderPickerList(query);
       }
+      pickerItems = Array.from(pickerList.querySelectorAll('.picker-option, .font-picker-item'));
+      pickerIndex = pickerItems.length ? 0 : -1;
+      updatePickerActive();
     };
+
+    pickerSearchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        movePicker(1);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        movePicker(-1);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (pickerItems[pickerIndex]) {
+          pickerItems[pickerIndex].click();
+        }
+      }
+    });
+
+    const loadedFonts = new Set();
+    function loadGoogleFont(fontFamily) {
+      if (!fontFamily || loadedFonts.has(fontFamily)) return;
+      loadedFonts.add(fontFamily);
+      const font = getFonts().find(f => f.family === fontFamily);
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      if (font && font.weights) {
+        const weights = font.weights.map(w => getFontWeightNum(w)).join(';');
+        link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(font.family)}:wght@${weights}&display=swap`;
+      } else {
+        link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(fontFamily)}:wght@400;700&display=swap`;
+      }
+      document.head.appendChild(link);
+    }
 
     function renderFontPickerOptions(type, query = '') {
       pickerList.innerHTML = '';
@@ -883,120 +1260,155 @@
       const currentVar = data.variables.find(v => v.id === vId);
 
       if (type === 'family') {
-        const filtered = GOOGLE_FONTS.filter(f => f.family.toLowerCase().includes(query.toLowerCase()));
-        
-        filtered.forEach((font, index) => {
-          // Add the base family entry
+        const filtered = getFonts().filter(f => f.family.toLowerCase().includes(query.toLowerCase()));
+        const EAGER_COUNT = 30;
+        const observer = new IntersectionObserver((entries) => {
+          entries.forEach(entry => {
+            if (!entry.isIntersecting) return;
+            const el = entry.target;
+            observer.unobserve(el);
+            const family = el.dataset.family;
+            const weights = el.__fontWeights || [];
+            const nameEl = el.querySelector('.font-name');
+            loadGoogleFont(family);
+            if (nameEl) {
+              nameEl.style.setProperty('font-family', `"${family}", sans-serif`, 'important');
+              nameEl.style.fontWeight = '400';
+              nameEl.style.fontStyle = 'normal';
+              if ('fonts' in document) {
+                document.fonts.load(`400 14px "${family}"`).then(() => {
+                  nameEl.style.opacity = '1';
+                }).catch(() => {
+                  nameEl.style.opacity = '0.5';
+                });
+              } else {
+                nameEl.style.opacity = '1';
+              }
+            }
+          });
+        }, { root: pickerList, rootMargin: '500px' });
+        filtered.forEach((font, idx) => {
           const opt = document.createElement('div');
           opt.className = 'font-picker-item';
           opt.dataset.family = font.family;
-          opt.innerHTML = `<span>${font.family}</span>`;
+          opt.dataset.weight = '400';
+          opt.dataset.style = 'normal';
+          const nameSpan = document.createElement('span');
+          nameSpan.className = 'font-name';
+          nameSpan.textContent = font.family;
+          nameSpan.style.opacity = '0';
+          opt.appendChild(nameSpan);
+          opt.__fontWeights = font.weights;
+          if (idx < EAGER_COUNT) {
+            loadGoogleFont(font.family);
+            nameSpan.style.setProperty('font-family', `"${font.family}", sans-serif`, 'important');
+            nameSpan.style.fontWeight = '400';
+            nameSpan.style.fontStyle = 'normal';
+            if ('fonts' in document) {
+              document.fonts.load(`400 14px "${font.family}"`).then(() => {
+                nameSpan.style.opacity = '1';
+              }).catch(() => {
+                nameSpan.style.opacity = '0.5';
+              });
+            } else {
+              nameSpan.style.opacity = '1';
+            }
+          } else {
+            observer.observe(opt);
+          }
+          
           opt.onclick = () => {
             updateVariableValue(vId, mId, font.family);
-            syncSiblingWeight(data, currentVar, mId, font, 'Regular');
+            renderWeightOptions(data, currentVar, mId, '');
+            syncSiblingWeight(data, currentVar, mId, font, null);
             hidePicker();
             renderTable(data);
           };
           pickerList.appendChild(opt);
-
-          // If searching or specifically for families like Abhaya Libre, show variants like in the image
-          if (query.length > 0 || ['Abhaya Libre', 'Alegreya', 'Inter', 'Montserrat', 'Roboto', 'Poppins'].includes(font.family)) {
-            font.weights.forEach(weight => {
-              if (weight === 'Regular') return; // Skip regular as it's the base family entry
-              const vOpt = document.createElement('div');
-              vOpt.className = 'font-picker-item variant';
-              vOpt.dataset.family = font.family;
-              vOpt.dataset.weight = weight;
-              vOpt.style.fontSize = '13px'; // Slightly larger to show style better
-              vOpt.style.opacity = '0.9';
-              
-              const weightMap = {
-                'Thin': 100, 'ExtraLight': 200, 'Light': 300, 'Regular': 400,
-                'Medium': 500, 'SemiBold': 600, 'Bold': 700, 'ExtraBold': 800, 'Black': 900
-              };
-              const isItalic = weight.toLowerCase().includes('italic');
-              const baseWeight = weight.replace('Italic', '');
-              
-              vOpt.style.fontWeight = weightMap[baseWeight] || 400;
-              vOpt.style.fontStyle = isItalic ? 'italic' : 'normal';
-              
-              vOpt.innerHTML = `<span>${font.family} ${weight}</span>`;
-              vOpt.onclick = () => {
-                updateVariableValue(vId, mId, font.family);
-                syncSiblingWeight(data, currentVar, mId, font, weight);
-                hidePicker();
-                renderTable(data);
-              };
-              pickerList.appendChild(vOpt);
-            });
-          }
         });
-
-        // Initialize lazy loading for fonts
-        initFontLazyLoading();
       } else {
-        // ... (weight picker logic remains same)
         renderWeightOptions(data, currentVar, mId, query);
       }
-    }
-
-    function initFontLazyLoading() {
-      const observer = new IntersectionObserver((entries) => {
-        entries.forEach(entry => {
-          if (entry.isIntersecting) {
-            const el = entry.target;
-            const family = el.dataset.family;
-            if (family) {
-              loadGoogleFontPreview(family);
-              el.style.fontFamily = `"${family}", sans-serif`;
-              observer.unobserve(el);
-            }
-          }
-        });
-      }, { root: pickerList, rootMargin: '50px' });
-
-      pickerList.querySelectorAll('.font-picker-item').forEach(item => observer.observe(item));
-    }
-
-    const loadedFonts = new Set();
-    function loadGoogleFontPreview(family) {
-      if (loadedFonts.has(family)) return;
-      loadedFonts.add(family);
-
-      const link = document.createElement('link');
-      link.rel = 'stylesheet';
-      // Use the 'text' parameter to only load characters for the family name + weight names
-      // This makes loading extremely fast and avoids "all fonts same" issue
-      const encodedFamily = family.replace(/ /g, '+');
-      link.href = `https://fonts.googleapis.com/css2?family=${encodedFamily}&text=${encodeURIComponent(family + " ThinExtraLightLightMediumSemiBoldBoldExtraBoldBlackItalic")}&display=swap`;
-      document.head.appendChild(link);
+      
+      pickerItems = Array.from(pickerList.querySelectorAll('.font-picker-item'));
+      pickerIndex = pickerItems.length ? 0 : -1;
+      updatePickerActive();
     }
 
     function syncSiblingWeight(data, currentVar, mId, font, preferredWeight) {
       const parts = currentVar.name.split('/');
+      // The current variable is typically "Typography/Font Family", so its base is "Typography"
       const basePath = parts.slice(0, -1).join('/');
-      const weightVar = data.variables.find(v => {
-        const vParts = v.name.split('/');
-        const vBase = vParts.slice(0, -1).join('/');
-        const vLeaf = vParts[vParts.length - 1].toLowerCase().replace(/[-_]/g, ' ');
-        return vBase === basePath && vLeaf === 'font weight';
+      
+      // Look for the actual "Font Weight" folder next to the "Font Family" folder
+      // Since `currentVar.name` might be `Typography/Font Family`, we need the root of that group
+      const parentPath = parts.slice(0, -2).join('/');
+      const isTopLevel = parts.length <= 2;
+      const searchPath = isTopLevel ? basePath : parentPath;
+      
+      const siblingVars = data.variables.filter(sv => sv.name.startsWith(searchPath));
+      
+      // Find all existing weight variables in the parallel "Font Weight" folder or as siblings
+      const weightVars = siblingVars.filter(sv => {
+        const lowerName = sv.name.toLowerCase();
+        return lowerName.includes('font weight') || lowerName.includes('/weight');
       });
       
-      if (weightVar) {
-        const targetWeight = font.weights.includes(preferredWeight) ? preferredWeight : (font.weights.includes('Regular') ? 'Regular' : font.weights[0]);
-        updateVariableValue(weightVar.id, mId, targetWeight);
+      // Attempt to find the exact folder path used by the existing weight variables
+      let targetWeightFolder = `${searchPath ? searchPath + '/' : ''}Font Weight`;
+      if (weightVars.length > 0) {
+        // use the directory path of the first found weight variable
+        const wParts = weightVars[0].name.split('/');
+        targetWeightFolder = wParts.slice(0, -1).join('/');
+      } else {
+         // fallback if none exist
+         targetWeightFolder = `${basePath}/Font Weight`;
       }
+      
+      // Remove them
+      weightVars.forEach(wv => {
+        data.variables = data.variables.filter(v => v.id !== wv.id);
+      });
+      
+      // Create new font weight variables based on the font's available weights
+      if (font && font.weights) {
+        font.weights.forEach(weight => {
+          const figmaValue = formatFigmaWeight(weight);
+          const varName = figmaValue.toLowerCase().replace(/\s+/g, ' ');
+          const newVar = {
+            id: 'var-' + Math.random().toString(36).substr(2, 9),
+            name: `${targetWeightFolder}/${varName}`,
+            type: 'STRING',
+            valuesByMode: {}
+          };
+          
+          // Set the value for all available modes
+          const modes = Object.keys(data.variables[0]?.valuesByMode || { [mId]: true });
+          modes.forEach(modeId => {
+            newVar.valuesByMode[modeId] = figmaValue;
+          });
+          
+          data.variables.push(newVar);
+        });
+      }
+      
+      // Force the sidebar to re-render to update the token counts immediately
+      renderSidebar();
     }
 
     function renderWeightOptions(data, currentVar, mId, query) {
+      pickerList.innerHTML = '';
       // Find the sibling font family variable
       const parts = currentVar.name.split('/');
+      const parentPath = parts.slice(0, -2).join('/');
       const basePath = parts.slice(0, -1).join('/');
-      const familyVar = data.variables.find(v => {
-        const vParts = v.name.split('/');
-        const vBase = vParts.slice(0, -1).join('/');
-        const vLeaf = vParts[vParts.length - 1].toLowerCase().replace(/[-_]/g, ' ');
-        return vBase === basePath && vLeaf === 'font family';
+      const isTopLevel = parts.length <= 2;
+      const searchPath = isTopLevel ? basePath : parentPath;
+      
+      const siblingVars = data.variables.filter(sv => sv.name.startsWith(searchPath));
+      const familyVar = siblingVars.find(sv => {
+        const leaf = sv.name.split('/').pop().toLowerCase().replace(/[-_]/g, ' ');
+        return leaf.includes('font family') || leaf === 'family';
       });
       
       let currentFamily = 'Inter';
@@ -1010,37 +1422,63 @@
         }
       }
 
-      const font = GOOGLE_FONTS.find(f => f.family === currentFamily) || GOOGLE_FONTS.find(f => f.family === 'Inter');
+      const font = getFonts().find(f => f.family === currentFamily);
+      if (!font) return;
       
-      if (font) {
-        loadGoogleFontPreview(font.family);
-        
-        const weightMap = {
-          'Thin': 100, 'ExtraLight': 200, 'Light': 300, 'Regular': 400,
-          'Medium': 500, 'SemiBold': 600, 'Bold': 700, 'ExtraBold': 800, 'Black': 900
-        };
-        
-        const filteredWeights = font.weights.filter(w => w.toLowerCase().includes(query.toLowerCase()));
+      const linkId = 'google-fonts-weights-preview';
+        let link = document.getElementById(linkId);
+        if (!link) {
+          link = document.createElement('link');
+          link.id = linkId;
+          link.rel = 'stylesheet';
+          document.head.appendChild(link);
+        }
+        const variantPairs = font.weights.map(w => {
+          const isItalic = w.toLowerCase().includes('italic');
+          const weight = getFontWeightNum(w);
+          return `${isItalic ? 1 : 0},${weight}`;
+        });
+        const unique = Array.from(new Set(variantPairs)).sort().join(';');
+        link.href = `https://fonts.googleapis.com/css2?family=${font.family.replace(/ /g, '+')}:ital,wght@${unique}&display=swap`;
+
+        const filteredWeights = font.weights.filter(w => w.toLowerCase().includes(query.toLowerCase()) || formatFigmaWeight(w).toLowerCase().includes(query.toLowerCase()));
         filteredWeights.forEach(weight => {
           const opt = document.createElement('div');
           opt.className = 'font-picker-item';
           const isItalic = weight.toLowerCase().includes('italic');
-          const baseWeight = weight.replace('Italic', '');
-          const fontWeightNum = weightMap[baseWeight] || 400;
-          
-          opt.style.fontFamily = `"${font.family}", sans-serif`;
-          opt.style.fontWeight = fontWeightNum;
-          opt.style.fontStyle = isItalic ? 'italic' : 'normal';
-          
-          opt.innerHTML = `<span>${weight}</span>`;
+          const fontWeightNum = getFontWeightNum(weight);
+          const figmaWeight = formatFigmaWeight(weight);
+          const style = isItalic ? 'italic' : 'normal';
+          const nameEl = document.createElement('span');
+          nameEl.className = 'font-name';
+          nameEl.textContent = figmaWeight;
+          nameEl.style.opacity = '0';
+          opt.appendChild(nameEl);
+          loadGoogleFont(font.family);
+          nameEl.style.setProperty('font-family', `"${font.family}", sans-serif`, 'important');
+          nameEl.style.fontWeight = String(fontWeightNum);
+          nameEl.style.fontStyle = style;
+          if ('fonts' in document) {
+            const desc = `${isItalic ? 'italic ' : ''}${fontWeightNum} 14px "${font.family}"`;
+            document.fonts.load(desc).then(() => {
+              nameEl.style.opacity = '1';
+            }).catch(() => {
+              nameEl.style.opacity = '0.5';
+            });
+          } else {
+            nameEl.style.opacity = '1';
+          }
           opt.onclick = () => {
-            updateVariableValue(currentVar.id, mId, weight);
+            updateVariableValue(currentVar.id, mId, figmaWeight);
             hidePicker();
             renderTable(data);
           };
           pickerList.appendChild(opt);
         });
-      }
+      
+      pickerItems = Array.from(pickerList.querySelectorAll('.font-picker-item'));
+      pickerIndex = pickerItems.length ? 0 : -1;
+      updatePickerActive();
     }
 
     window.showPicker = (vId, mId, event) => {
@@ -1068,6 +1506,28 @@
       pickerOverlay.style.display = 'none';
       currentPickerContext = null;
     };
+
+    function updatePickerActive() {
+      pickerItems.forEach((el, i) => {
+        el.classList.toggle('active', i === pickerIndex);
+        if (i === pickerIndex) {
+          el.style.backgroundColor = 'var(--accent-soft)';
+          el.style.color = 'var(--accent)';
+        } else {
+          el.style.backgroundColor = '';
+          el.style.color = '';
+        }
+      });
+      if (pickerItems[pickerIndex]) {
+        pickerItems[pickerIndex].scrollIntoView({ block: 'nearest' });
+      }
+    }
+
+    function movePicker(dir) {
+      if (!pickerItems.length) return;
+      pickerIndex = (pickerIndex + dir + pickerItems.length) % pickerItems.length;
+      updatePickerActive();
+    }
 
     window.filterPickerResults = (query) => {
       if (currentPickerContext?.type === 'family' || currentPickerContext?.type === 'weight') {
@@ -1137,6 +1597,10 @@
       if (pickerList.innerHTML === '') {
         pickerList.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--muted); font-size: 11px;">No matching variables found</div>';
       }
+      
+      pickerItems = Array.from(pickerList.querySelectorAll('.picker-option'));
+      pickerIndex = pickerItems.length ? 0 : -1;
+      updatePickerActive();
     }
 
     function selectPickerVariable(targetVId, targetName) {
@@ -1169,3 +1633,4 @@
       findAndReplace(primitivesData);
       hidePicker();
     }
+  

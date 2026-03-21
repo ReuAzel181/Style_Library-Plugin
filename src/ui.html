@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./ui.css">
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div class="status-msg" id="status-msg">Ready</div>
+        <div id="duplicate-notice" class="notice-box" style="display: none; margin: 0; padding: 0; border: none; background: transparent; color: var(--error); font-size: 11px; align-items: center; gap: 6px;">
+          <svg viewBox="0 0 24 24" style="width: 14px; height: 14px;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+          Already exists in Figma
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <div id="theme-toggle" class="theme-toggle" title="Toggle Dark Mode">
+          <svg viewBox="0 0 24 24" style="width:16px; height:16px;"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" stroke="currentColor" stroke-width="2.5"></path></svg>
+        </div>
+        <button class="btn-primary" id="action-btn">Load Library for Review</button>
+        <div class="progress-track" id="progress-track" style="position: absolute; bottom: 0; left: 0; width: 100%; height: 2px; display: none; margin: 0;"><div class="progress-fill" id="progress-fill"></div></div>
+      </div>
+    </header>
+
+    <div class="content-split">
+      <aside class="sidebar">
+        <div class="sidebar-label">Collections</div>
+        <div id="collection-list" class="sidebar-list-container"></div>
+        
+        <div id="group-sidebar" class="group-sidebar" style="display: none;">
+          <div id="group-list" class="group-list-container"></div>
+        </div>
+      </aside>
+
+      <main class="main-view">
+        <div class="view-header" style="position: relative;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <span class="view-title" id="view-title">Select a collection</span>
+            <span id="token-total" style="font-size: 11px; color: var(--muted);">0 tokens</span>
+          </div>
+        </div>
+        <div class="table-container" id="table-container">
+          <div style="padding: 60px 24px; text-align: center; color: var(--muted);">
+            <svg viewBox="0 0 24 24" style="width: 32px; height: 32px; margin-bottom: 12px; opacity: 0.2; display: inline-block;"><path d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+            <div>Click "Load Library" to preview content</div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+  </div>
+
+  <div id="picker-overlay" class="picker-overlay" onclick="hidePicker()">
+    <div class="variable-picker" id="variable-picker" onclick="event.stopPropagation()">
+      <div class="picker-header">
+        <span class="picker-title" id="picker-title">Google Fonts</span>
+      </div>
+      <div class="picker-search">
+        <div class="picker-search-container">
+          <svg class="picker-search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="2.5"></circle><path d="M21 21l-4.35-4.35" stroke="currentColor" stroke-width="2.5"></path></svg>
+          <input type="text" id="picker-search-input" placeholder="Search fonts" oninput="filterPickerResults(this.value)">
+        </div>
+      </div>
+      <div class="picker-list" id="picker-list"></div>
+    </div>
+  </div>
+
+  <!-- Custom Color Picker -->
+  <div id="color-picker-modal" class="color-picker-modal" onclick="event.stopPropagation()">
+    <div class="cp-header">
+      <div class="cp-tabs">
+        <span class="cp-tab active">Custom</span>
+      </div>
+      <span class="cp-close" onclick="hideColorPicker()">
+        <svg viewBox="0 0 24 24" style="width:14px;height:14px;"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2.5"></path></svg>
+      </span>
+    </div>
+    
+    <div class="cp-sat-val" id="cp-sat-val">
+      <div class="cp-sat-val-white">
+        <div class="cp-sat-val-black"></div>
+      </div>
+      <div class="cp-cursor" id="cp-cursor"></div>
+    </div>
+
+    <div class="cp-sliders">
+      <div class="cp-slider-row" style="display: flex; align-items: center; gap: 12px; width: 100%;">
+        <div class="cp-slider-stack" style="flex: 1; display: flex; flex-direction: column; gap: 10px;">
+          <input type="range" class="cp-hue-slider" id="cp-hue" min="0" max="360" step="1" value="0">
+          <input type="range" class="cp-alpha-slider" id="cp-alpha" min="0" max="100" step="1" value="100">
+        </div>
+      </div>
+    </div>
+
+    <div class="cp-inputs">
+      <select class="cp-select" id="cp-mode-select">
+        <option value="HEX">Hex</option>
+        <option value="HSL">HSL</option>
+        <option value="RGB">RGB</option>
+      </select>
+      <div id="cp-input-container" style="display: flex; gap: 4px; flex: 1;">
+        <!-- Inputs will be dynamically generated based on mode -->
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./ui.js"></script>
+</body>
+</html>
