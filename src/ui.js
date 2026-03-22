@@ -1211,6 +1211,10 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
       heading: {},
       body: {}
     };
+    const localStyleUnits = {
+      heading: { lineHeightPercent: true, lineSpacingPercent: true },
+      body: { lineHeightPercent: true, lineSpacingPercent: true }
+    };
 
     window.switchLSNav = (navId) => {
       activeLSNav = navId;
@@ -1310,6 +1314,11 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
         .map(v => String(getResolvedVal(v) || v.name.split('/').pop() || '').trim())
         .filter(Boolean);
       const textCaseOptions = ['Original', 'Upper', 'Lower', 'Title', 'Small Caps'];
+      const formatUnitValue = (value, isPercent) => {
+        const normalized = String(value ?? '').replace('%', '').trim();
+        if (!normalized) return '';
+        return isPercent ? `${normalized}%` : normalized;
+      };
 
       const isHeadingToken = (name) => name.startsWith('Typography/Heading/');
       const isTextToken = (name) => name.startsWith('Typography/Text/') || name.startsWith('Typography/Body/');
@@ -1368,18 +1377,22 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
             size: String(getResolvedVal(variable) ?? ''),
             lineHeight: String(section === 'heading' ? (headingLineHeightMap[tokenName.toLowerCase()] || 120) : 140),
             lineSpacing: '0',
+            lineHeightIsPercent: localStyleUnits[section].lineHeightPercent,
+            lineSpacingIsPercent: localStyleUnits[section].lineSpacingPercent,
             case: 'Original'
           };
         } else {
           localStyleDraft[section][rowKey].font = fontFamilyDefault;
           localStyleDraft[section][rowKey].size = String(getResolvedVal(variable) ?? '');
+          localStyleDraft[section][rowKey].lineHeightIsPercent = localStyleUnits[section].lineHeightPercent;
+          localStyleDraft[section][rowKey].lineSpacingIsPercent = localStyleUnits[section].lineSpacingPercent;
         }
         return localStyleDraft[section][rowKey];
       };
 
-      const createEditableCell = (section, rowKey, field, value, options = null) => {
+      const createEditableCell = (section, rowKey, field, value, options = null, sample = 'Sample Text') => {
         const hasOptions = Array.isArray(options) && options.length > 0;
-        const optionsAttr = hasOptions ? ` data-ls-options='${escapeHtml(JSON.stringify(options))}'` : '';
+        const optionsAttr = hasOptions ? ` data-ls-options='${escapeHtml(JSON.stringify(options))}' data-ls-sample='${escapeHtml(sample)}'` : '';
         const editableMode = hasOptions ? 'false' : 'true';
         const extraClass = hasOptions ? ' ls-select-cell' : '';
         return `
@@ -1425,11 +1438,11 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
           ${createReadonlyCell(row.name)}
           ${createLinkedTokenCell(row.path)}
           ${createLinkedTokenCell(row.fontPath, row.font)}
-          ${createEditableCell(section, row.key, 'fontWeight', row.fontWeight, primitiveFontWeightOptions)}
+          ${createEditableCell(section, row.key, 'fontWeight', row.fontWeight, primitiveFontWeightOptions, 'Ag')}
           ${createLinkedTokenCell(row.path, row.size)}
-          ${createEditableCell(section, row.key, 'lineHeight', row.lineHeight)}
-          ${createEditableCell(section, row.key, 'lineSpacing', row.lineSpacing)}
-          ${createEditableCell(section, row.key, 'case', row.case, textCaseOptions)}
+          ${createEditableCell(section, row.key, 'lineHeight', formatUnitValue(row.lineHeight, row.lineHeightIsPercent))}
+          ${createEditableCell(section, row.key, 'lineSpacing', formatUnitValue(row.lineSpacing, row.lineSpacingIsPercent))}
+          ${createEditableCell(section, row.key, 'case', row.case, textCaseOptions, 'Sample Text')}
         </tr>
       `;
       const bindEditors = () => {
@@ -1438,26 +1451,52 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
           const rowKey = editableEl.dataset.lsRow;
           const field = editableEl.dataset.lsField;
           const value = (overrideValue ?? editableEl.textContent).trim();
+          const normalizedValue = (field === 'lineHeight' || field === 'lineSpacing') ? value.replace('%', '').trim() : value;
           if (!section || !rowKey || !field) return;
           if (section === 'grid') {
             const targetRow = localStyleDraft.grid.find(row => row.key === rowKey);
             if (!targetRow) return;
-            targetRow[field] = value;
+            targetRow[field] = normalizedValue;
             return;
           }
           if (!localStyleDraft[section][rowKey]) return;
-          localStyleDraft[section][rowKey][field] = value;
+          localStyleDraft[section][rowKey][field] = normalizedValue;
+        };
+        const openLocalOptionPicker = (editableEl, options) => {
+          const section = editableEl.dataset.lsSection;
+          const rowKey = editableEl.dataset.lsRow;
+          const field = editableEl.dataset.lsField;
+          const sample = editableEl.dataset.lsSample || 'Sample Text';
+          if (!section || !rowKey || !field) return;
+          const row = localStyleDraft[section]?.[rowKey];
+          if (!row) return;
+          const rect = editableEl.getBoundingClientRect();
+          currentPickerContext = {
+            type: 'ls-options',
+            section,
+            rowKey,
+            field,
+            options,
+            sample,
+            currentValue: String(row[field] ?? ''),
+            fontFamily: row.font || 'Inter'
+          };
+          document.getElementById('picker-title').textContent = field === 'fontWeight' ? 'Font Weight' : 'Case';
+          pickerSearchInput.value = '';
+          pickerSearchInput.disabled = false;
+          pickerSearchInput.placeholder = 'Search';
+          pickerOverlay.style.display = 'block';
+          pickerSearchInput.focus();
+          const picker = document.getElementById('variable-picker');
+          picker.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - 330)}px`;
+          picker.style.left = `${Math.min(rect.left, window.innerWidth - 250)}px`;
+          window.renderLocalOptionList('');
         };
         content.querySelectorAll('[data-ls-field]').forEach((editableEl) => {
           const options = editableEl.dataset.lsOptions ? JSON.parse(editableEl.dataset.lsOptions) : null;
           if (Array.isArray(options) && options.length > 0) {
             editableEl.addEventListener('click', () => {
-              const current = editableEl.textContent.trim().toLowerCase();
-              const currentIndex = options.findIndex(option => String(option).toLowerCase() === current);
-              const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % options.length : 0;
-              const nextValue = String(options[nextIndex]);
-              editableEl.textContent = nextValue;
-              persistValue(editableEl, nextValue);
+              openLocalOptionPicker(editableEl, options);
             });
             return;
           }
@@ -1519,9 +1558,9 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
               <th class="col-lg">Linked Token</th>
               <th class="col-md">Font</th>
               <th class="col-sm">Font Weight</th>
-              <th class="col-xs">Size</th>
-              <th class="col-xs">Line Height</th>
-              <th class="col-xs">Line Spacing</th>
+              <th class="col-sm">Size</th>
+              <th class="col-md"><div class="ls-header-split"><span>Line Height</span><button class="ls-unit-btn ${localStyleUnits.heading.lineHeightPercent ? 'active' : ''}" onclick="toggleLocalUnit('heading','lineHeight',event)">%</button></div></th>
+              <th class="col-md"><div class="ls-header-split"><span>Line Spacing</span><button class="ls-unit-btn ${localStyleUnits.heading.lineSpacingPercent ? 'active' : ''}" onclick="toggleLocalUnit('heading','lineSpacing',event)">%</button></div></th>
               <th class="col-xs">Case</th>
             </tr>
           </thead>
@@ -1537,7 +1576,12 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
             </table>
           `;
           setImportButton('Import Heading Styles', rows.length === 0, () => {
-            parent.postMessage({ pluginMessage: { type: 'create-text-styles', data: { section: 'heading', rows } } }, '*');
+            const payloadRows = rows.map(row => ({
+              ...row,
+              lineHeightUnit: row.lineHeightIsPercent ? 'PERCENT' : 'PIXELS',
+              lineSpacingUnit: row.lineSpacingIsPercent ? 'PERCENT' : 'PIXELS'
+            }));
+            parent.postMessage({ pluginMessage: { type: 'create-text-styles', data: { section: 'heading', rows: payloadRows } } }, '*');
           });
         } else {
           tableHtml = `
@@ -1555,9 +1599,9 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
               <th class="col-lg">Linked Token</th>
               <th class="col-md">Font</th>
               <th class="col-sm">Font Weight</th>
-              <th class="col-xs">Size</th>
-              <th class="col-xs">Line Height</th>
-              <th class="col-xs">Line Spacing</th>
+              <th class="col-sm">Size</th>
+              <th class="col-md"><div class="ls-header-split"><span>Line Height</span><button class="ls-unit-btn ${localStyleUnits.body.lineHeightPercent ? 'active' : ''}" onclick="toggleLocalUnit('body','lineHeight',event)">%</button></div></th>
+              <th class="col-md"><div class="ls-header-split"><span>Line Spacing</span><button class="ls-unit-btn ${localStyleUnits.body.lineSpacingPercent ? 'active' : ''}" onclick="toggleLocalUnit('body','lineSpacing',event)">%</button></div></th>
               <th class="col-xs">Case</th>
             </tr>
           </thead>
@@ -1573,7 +1617,12 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
             </table>
           `;
           setImportButton('Import Text Styles', rows.length === 0, () => {
-            parent.postMessage({ pluginMessage: { type: 'create-text-styles', data: { section: 'body', rows } } }, '*');
+            const payloadRows = rows.map(row => ({
+              ...row,
+              lineHeightUnit: row.lineHeightIsPercent ? 'PERCENT' : 'PIXELS',
+              lineSpacingUnit: row.lineSpacingIsPercent ? 'PERCENT' : 'PIXELS'
+            }));
+            parent.postMessage({ pluginMessage: { type: 'create-text-styles', data: { section: 'body', rows: payloadRows } } }, '*');
           });
         } else {
           tableHtml = `
@@ -1587,6 +1636,15 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
 
       content.innerHTML = tableHtml;
       bindEditors();
+      window.toggleLocalUnit = (section, field, event) => {
+        if (event) event.stopPropagation();
+        const unitKey = field === 'lineHeight' ? 'lineHeightPercent' : 'lineSpacingPercent';
+        localStyleUnits[section][unitKey] = !localStyleUnits[section][unitKey];
+        Object.values(localStyleDraft[section]).forEach((row) => {
+          row[field === 'lineHeight' ? 'lineHeightIsPercent' : 'lineSpacingIsPercent'] = localStyleUnits[section][unitKey];
+        });
+        renderLocalStylesView();
+      };
     }
 
     // Remove old listeners since they are dynamically bound in renderLocalStylesView now
@@ -2171,6 +2229,56 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
       updatePickerActive();
     };
 
+    window.renderLocalOptionList = (query) => {
+      if (!currentPickerContext || currentPickerContext.type !== 'ls-options') return;
+      const search = String(query || '').toLowerCase();
+      const options = (currentPickerContext.options || []).filter(option => String(option).toLowerCase().includes(search));
+      pickerList.innerHTML = '';
+      if (options.length === 0) {
+        pickerList.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--muted); font-size: 11px;">No matching options found</div>';
+        pickerItems = [];
+        pickerIndex = -1;
+        return;
+      }
+      options.forEach(option => {
+        const opt = document.createElement('div');
+        const isSelected = String(option).toLowerCase() === String(currentPickerContext.currentValue || '').toLowerCase();
+        opt.className = `picker-option ${isSelected ? 'selected' : ''}`;
+        const sampleSource = currentPickerContext.sample || 'Sample Text';
+        let sampleText = sampleSource;
+        if (currentPickerContext.field === 'case') {
+          if (String(option).toLowerCase() === 'upper') sampleText = sampleSource.toUpperCase();
+          if (String(option).toLowerCase() === 'lower') sampleText = sampleSource.toLowerCase();
+          if (String(option).toLowerCase() === 'title') sampleText = sampleSource.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.slice(1).toLowerCase());
+          if (String(option).toLowerCase() === 'small caps') sampleText = sampleSource.toUpperCase();
+        }
+        let sampleStyle = '';
+        if (currentPickerContext.field === 'fontWeight') {
+          const normalized = String(option).toLowerCase().replace(/\s+/g, '');
+          const map = { light: 300, regular: 400, medium: 500, semibold: 600, bold: 700, extrabold: 800 };
+          const weight = map[normalized] || 400;
+          sampleStyle = `font-family:${currentPickerContext.fontFamily || 'Inter'};font-weight:${weight};`;
+        }
+        opt.innerHTML = `
+          <span class="type-icon">•</span>
+          <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapePickerHtml(option)}</span>
+          <span class="linked-row-value" style="${sampleStyle}">${escapePickerHtml(sampleText)}</span>
+        `;
+        opt.onclick = () => {
+          const { section, rowKey, field } = currentPickerContext;
+          if (localStyleDraft?.[section]?.[rowKey]) {
+            localStyleDraft[section][rowKey][field] = String(option);
+          }
+          hidePicker();
+          renderLocalStylesView();
+        };
+        pickerList.appendChild(opt);
+      });
+      pickerItems = Array.from(pickerList.querySelectorAll('.picker-option'));
+      pickerIndex = -1;
+      updatePickerActive();
+    };
+
     window.showLinkedVariablesModal = (path, event) => {
       if (event) event.stopPropagation();
       const rect = event?.currentTarget?.getBoundingClientRect();
@@ -2200,6 +2308,8 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
     window.filterPickerResults = (query) => {
       if (currentPickerContext?.type === 'family' || currentPickerContext?.type === 'weight') {
         renderFontPickerOptions(currentPickerContext.type, query);
+      } else if (currentPickerContext?.type === 'ls-options') {
+        window.renderLocalOptionList(query);
       } else if (currentPickerContext?.type === 'linked-preview') {
         window.renderLinkedPreviewList(query);
       } else {

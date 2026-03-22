@@ -160,6 +160,8 @@ figma.ui.onmessage = async (msg: { type: string, data?: any }) => {
         const size = Math.max(1, toNumber(row.size, 16));
         const lineHeight = Math.max(1, toNumber(row.lineHeight, 140));
         const lineSpacing = toNumber(row.lineSpacing, 0);
+        const lineHeightUnit = String(row.lineHeightUnit || 'PERCENT').toUpperCase() === 'PIXELS' ? 'PIXELS' : 'PERCENT';
+        const lineSpacingUnit = String(row.lineSpacingUnit || 'PERCENT').toUpperCase() === 'PIXELS' ? 'PIXELS' : 'PERCENT';
         const fontFamily = String(row.font || 'Inter').trim() || 'Inter';
         const fontStyle = String(row.fontWeight || 'Regular').trim() || 'Regular';
         const fontName = await loadFontSafe(fontFamily, fontStyle);
@@ -176,8 +178,8 @@ figma.ui.onmessage = async (msg: { type: string, data?: any }) => {
 
         textStyle.fontName = fontName;
         textStyle.fontSize = size;
-        textStyle.lineHeight = { value: lineHeight, unit: 'PERCENT' };
-        textStyle.letterSpacing = { value: lineSpacing, unit: 'PERCENT' };
+        textStyle.lineHeight = { value: lineHeight, unit: lineHeightUnit };
+        textStyle.letterSpacing = { value: lineSpacing, unit: lineSpacingUnit };
         textStyle.textCase = toTextCase(row.case);
       }
 
