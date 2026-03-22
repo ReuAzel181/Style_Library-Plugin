@@ -6,10 +6,12 @@
         "mono": { "value": "JetBrains Mono, monospace", "type": "fontFamily" }
       },
       "font-weight": {
-        "regular": { "value": "400", "type": "fontWeight" },
-        "medium": { "value": "500", "type": "fontWeight" },
-        "semibold": { "value": "600", "type": "fontWeight" },
-        "bold": { "value": "700", "type": "fontWeight" }
+        "light": { "value": "Light", "type": "fontWeight" },
+        "regular": { "value": "Regular", "type": "fontWeight" },
+        "medium": { "value": "Medium", "type": "fontWeight" },
+        "semibold": { "value": "Semi Bold", "type": "fontWeight" },
+        "bold": { "value": "Bold", "type": "fontWeight" },
+        "extrabold": { "value": "Extra Bold", "type": "fontWeight" }
       },
       "heading": {
         "h1": {

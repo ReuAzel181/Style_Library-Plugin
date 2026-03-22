@@ -11,23 +11,31 @@
 <body>
   <div class="app">
     <header class="header">
-      <div style="display: flex; align-items: center; gap: 12px;">
-        <div class="status-msg" id="status-msg">Ready</div>
-        <div id="duplicate-notice" class="notice-box" style="display: none; margin: 0; padding: 0; border: none; background: transparent; color: var(--error); font-size: 11px; align-items: center; gap: 6px;">
+      <div style="display: flex; align-items: center; gap: 12px; flex: 1;">
+        <div id="duplicate-notice" class="notice-box" style="display: none; margin: 0; padding: 4px 8px; border-radius: 4px; background: var(--error-soft, rgba(255,0,0,0.1)); color: var(--error); font-size: 11px; align-items: center; gap: 6px;">
           <svg viewBox="0 0 24 24" style="width: 14px; height: 14px;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
           Already exists in Figma
+        </div>
+        <div id="header-changes-notice" style="display: none; align-items: center; gap: 6px; font-size: 11px; color: var(--accent); cursor: pointer; background: var(--accent-soft); padding: 4px 8px; border-radius: 4px; max-width: 250px;">
+          <svg viewBox="0 0 24 24" style="width: 14px; height: 14px; flex-shrink: 0;"><path d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10zm-1-11v6h2v-6h-2zm0-4v2h2V7h-2z" fill="currentColor"></path></svg>
+          <span id="header-changes-text" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Modifications detected</span>
+          <svg viewBox="0 0 24 24" style="width: 14px; height: 14px; flex-shrink: 0;"><path d="M7 10l5 5 5-5z" fill="currentColor"></path></svg>
         </div>
       </div>
       <div style="display: flex; align-items: center; gap: 8px;">
         <div id="theme-toggle" class="theme-toggle" title="Toggle Dark Mode">
           <svg viewBox="0 0 24 24" style="width:16px; height:16px;"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" stroke="currentColor" stroke-width="2.5"></path></svg>
         </div>
+        <div class="view-toggle-btn" id="view-toggle-btn" style="display: flex; align-items: center; background: var(--bg-hover); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; overflow: hidden; font-size: 11px; font-weight: 500; margin-right: 8px;">
+          <div id="tab-collections" style="padding: 6px 12px; background: var(--accent); color: #fff;">Collections</div>
+          <div id="tab-local-styles" style="padding: 6px 12px; color: var(--fg); opacity: 0.7;">Local Styles</div>
+        </div>
         <button class="btn-primary" id="action-btn">Load Library for Review</button>
         <div class="progress-track" id="progress-track" style="position: absolute; bottom: 0; left: 0; width: 100%; height: 2px; display: none; margin: 0;"><div class="progress-fill" id="progress-fill"></div></div>
       </div>
     </header>
 
-    <div class="content-split">
+    <div class="content-split" id="collections-view">
       <aside class="sidebar">
         <div class="sidebar-label">Collections</div>
         <div id="collection-list" class="sidebar-list-container"></div>
@@ -38,7 +46,7 @@
       </aside>
 
       <main class="main-view">
-        <div class="view-header" style="position: relative;">
+        <div class="view-header" style="position: relative; display: flex; justify-content: space-between; align-items: center; width: 100%;">
           <div style="display: flex; align-items: center; gap: 12px;">
             <span class="view-title" id="view-title">Select a collection</span>
             <span id="token-total" style="font-size: 11px; color: var(--muted);">0 tokens</span>
@@ -49,6 +57,48 @@
             <svg viewBox="0 0 24 24" style="width: 32px; height: 32px; margin-bottom: 12px; opacity: 0.2; display: inline-block;"><path d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
             <div>Click "Load Library" to preview content</div>
           </div>
+        </div>
+      </main>
+    </div>
+
+    <div class="local-styles-view content-split" id="local-styles-view" style="display: none; background: var(--bg);">
+      <aside class="sidebar">
+        <div class="sidebar-label">Local Styles</div>
+        <div class="sidebar-list-container">
+          <div class="collection-item active" id="ls-nav-grid" onclick="switchLSNav('grid')">
+            <div style="display: flex; flex-direction: column; flex: 1;">
+              <span style="font-size: 12px;">Grid System</span>
+            </div>
+            <span style="font-size: 11px; color: var(--muted); opacity: 0.8;">3</span>
+          </div>
+          <div class="collection-item" id="ls-nav-heading" onclick="switchLSNav('heading')">
+            <div style="display: flex; flex-direction: column; flex: 1;">
+              <span style="font-size: 12px;">Heading Text</span>
+            </div>
+            <span style="font-size: 11px; color: var(--muted); opacity: 0.8;" id="ls-count-heading">0</span>
+          </div>
+          <div class="collection-item" id="ls-nav-body" onclick="switchLSNav('body')">
+            <div style="display: flex; flex-direction: column; flex: 1;">
+              <span style="font-size: 12px;">Text</span>
+            </div>
+            <span style="font-size: 11px; color: var(--muted); opacity: 0.8;" id="ls-count-body">0</span>
+          </div>
+        </div>
+      </aside>
+
+      <main class="main-view">
+        <div class="view-header" style="position: relative; display: flex; justify-content: space-between; align-items: center; width: 100%;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <span class="view-title" id="ls-view-title">Grid System</span>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button id="ls-import-btn" class="ls-import-btn" style="background: var(--accent); border: 1px solid var(--accent); border-radius: 4px; padding: 4px 12px; font-size: 11px; color: #fff; cursor: pointer; display: flex; align-items: center; gap: 6px; font-weight: 500;">
+              Import to Figma
+            </button>
+          </div>
+        </div>
+        <div class="table-container" id="local-styles-content">
+          <!-- Table content injected via JS -->
         </div>
       </main>
     </div>
@@ -67,6 +117,19 @@
         </div>
       </div>
       <div class="picker-list" id="picker-list"></div>
+    </div>
+  </div>
+
+  <div id="modifications-modal" class="picker-overlay" onclick="hideModificationsModal()">
+    <div class="variable-picker" style="max-height: 80vh; width: 400px; display: flex; flex-direction: column;" onclick="event.stopPropagation()">
+      <div class="picker-header" style="justify-content: space-between; display: flex;">
+        <span class="picker-title">Review Modifications</span>
+        <span style="cursor: pointer; opacity: 0.6; padding: 4px;" onclick="hideModificationsModal()">
+          <svg viewBox="0 0 24 24" style="width:14px;height:14px;"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2.5"></path></svg>
+        </span>
+      </div>
+      <div class="picker-list" id="modifications-list" style="padding: 16px; gap: 16px; display: flex; flex-direction: column;">
+      </div>
     </div>
   </div>
 
@@ -97,13 +160,13 @@
       </div>
     </div>
 
-    <div class="cp-inputs">
-      <select class="cp-select" id="cp-mode-select">
+    <div class="cp-inputs" style="display: flex; gap: 8px; margin-top: 12px; align-items: stretch; height: 28px;">
+      <select class="cp-select" id="cp-mode-select" style="padding: 0 8px; border-radius: 6px; font-size: 11px; height: 100%; font-weight: 500;">
         <option value="HEX">Hex</option>
         <option value="HSL">HSL</option>
         <option value="RGB">RGB</option>
       </select>
-      <div id="cp-input-container" style="display: flex; gap: 4px; flex: 1;">
+      <div id="cp-input-container" style="display: flex; flex: 1; height: 100%;">
         <!-- Inputs will be dynamically generated based on mode -->
       </div>
     </div>

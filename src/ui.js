@@ -17,6 +17,8 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
     let primitivesData = null;
     let modesExist = false;
     let primitivesExist = false;
+    let projectHeadingCount = 0;
+    let projectBodyCount = 0;
     let activeCollection = null; // 'modes' | 'primitives'
     let activeGroupPath = 'All';
     let state = 'init';
@@ -26,23 +28,36 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
     let history = [];
     let historyIndex = -1;
     const MAX_HISTORY = 50;
+    let historyTimeout = null;
 
     function saveToHistory() {
-      // Remove any redo history
-      if (historyIndex < history.length - 1) {
+      if (history.length === 0) {
+        history.push(JSON.parse(JSON.stringify({ modesData, primitivesData, activeCollection, activeGroupPath })));
+        historyIndex = 0;
+      } else if (historyIndex < history.length - 1) {
         history = history.slice(0, historyIndex + 1);
       }
       
-      const snapshot = JSON.parse(JSON.stringify({
-        modesData,
-        primitivesData,
-        activeCollection,
-        activeGroupPath
-      }));
+      if (historyTimeout) clearTimeout(historyTimeout);
       
-      history.push(snapshot);
-      if (history.length > MAX_HISTORY) history.shift();
-      else historyIndex++;
+      historyTimeout = setTimeout(() => {
+        const snapshotStr = JSON.stringify({
+          modesData,
+          primitivesData,
+          activeCollection,
+          activeGroupPath
+        });
+        
+        if (historyIndex >= 0 && JSON.stringify(history[historyIndex]) === snapshotStr) {
+          historyTimeout = null;
+          return;
+        }
+
+        history.push(JSON.parse(snapshotStr));
+        if (history.length > MAX_HISTORY) history.shift();
+        else historyIndex++;
+        historyTimeout = null;
+      }, 100);
     }
 
     function undo() {
@@ -62,8 +77,8 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
     function applyHistoryState(stateObj) {
       modesData = stateObj.modesData;
       primitivesData = stateObj.primitivesData;
-      activeCollection = stateObj.activeCollection;
-      activeGroupPath = stateObj.activeGroupPath;
+      // Do not overwrite activeCollection and activeGroupPath
+      // so the user stays on the current page when undoing/redoing
       
       renderSidebar();
       const data = activeCollection === 'modes' ? modesData : primitivesData;
@@ -78,6 +93,7 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
       const isVariablePickerOpen = pickerOverlay.style.display === 'block';
 
       if (isColorModalOpen && !cpModal.contains(e.target) && !e.target.closest('.color-opacity-row')) {
+        saveToHistory();
         hideColorPicker();
       }
       
@@ -88,11 +104,18 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
 
     // Keyboard Shortcuts
     window.addEventListener('keydown', (e) => {
+      const isInput = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA';
       if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
-        if (e.shiftKey) redo();
-        else undo();
+        if (!isInput) {
+          e.preventDefault();
+          if (e.shiftKey) redo();
+          else undo();
+        }
       } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
-        redo();
+        if (!isInput) {
+          e.preventDefault();
+          redo();
+        }
       }
     });
 
@@ -143,10 +166,12 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
     parent.postMessage({ pluginMessage: { type: 'check-collections' } }, '*');
 
     function updateStatus(text, success = false) {
-      statusMsg.textContent = text;
+      if (statusMsg) {
+        statusMsg.textContent = text;
+      }
       if (success) {
         setTimeout(() => {
-          statusMsg.textContent = 'Ready';
+          if (statusMsg) statusMsg.textContent = 'Ready';
           progressTrack.style.display = 'none';
           progressFill.style.width = '0%';
         }, 3000);
@@ -154,6 +179,13 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
     }
 
     actionBtn.onclick = () => {
+      console.log('clicked, state:', state);
+      if (document.activeElement && document.activeElement.blur) {
+        document.activeElement.blur();
+      }
+      
+      // Remove disabled check since the button is visually enabled but the property might still be preventing clicks
+      
       if (state === 'init') {
         updateStatus('Fetching library data...');
         parent.postMessage({ pluginMessage: { type: 'request-token-data' } }, '*');
@@ -162,55 +194,6 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
         progressFill.style.width = '40%';
         updateStatus('Syncing to Figma...');
         
-        const saveEdits = (data) => {
-          data.variables.forEach(v => {
-            // Update name (leaf only in UI, but we should restore full path if it was there)
-            const nameInput = document.getElementById(`in-${v.id}`);
-            if (nameInput) {
-              const parts = v.name.split('/');
-              if (parts.length > 1) {
-                parts[parts.length - 1] = nameInput.value;
-                v.name = parts.join('/');
-              } else {
-                v.name = nameInput.value;
-              }
-            }
-
-            // Update mode values
-            Object.keys(data.modes).forEach(mId => {
-              const valInput = document.getElementById(`val-${v.id}-${mId}`);
-              if (valInput) {
-                let newVal = valInput.value;
-                
-                // Basic type casting
-                if (v.type === 'FLOAT') {
-                  v.valuesByMode[mId] = parseFloat(newVal);
-                } else if (v.type === 'COLOR' && v.valuesByMode[mId]?.r !== undefined) {
-                  // If it's a hex string, we might need complex conversion, 
-                  // but for now we'll assume they edit the stringified RGBA or hex
-                  // Simple support for hex if needed, but let's stick to text for raw edits
-                  try {
-                    if (newVal.startsWith('#')) {
-                      // Simple hex to rgb logic
-                      const r = parseInt(newVal.slice(1,3), 16) / 255;
-                      const g = parseInt(newVal.slice(3,5), 16) / 255;
-                      const b = parseInt(newVal.slice(5,7), 16) / 255;
-                      v.valuesByMode[mId] = { r, g, b, a: 1 };
-                    } else {
-                      v.valuesByMode[mId] = JSON.parse(newVal);
-                    }
-                  } catch(e) { v.valuesByMode[mId] = newVal; }
-                } else {
-                  v.valuesByMode[mId] = newVal;
-                }
-              }
-            });
-          });
-        };
-        
-        saveEdits(modesData);
-        saveEdits(primitivesData);
-
         parent.postMessage({ 
           pluginMessage: { 
             type: 'request-import',
@@ -220,32 +203,143 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
       }
     };
 
+    window.hideModificationsModal = () => {
+      document.getElementById('modifications-modal').style.display = 'none';
+    };
+
     window.onmessage = (event) => {
-      const msg = event.data.pluginMessage;
+      const msg = event.data?.pluginMessage;
+      if (!msg) return;
       
       if (msg.type === 'collections-status') {
         modesExist = msg.modesExist;
         primitivesExist = msg.primitivesExist;
-        modesData = msg.preview.modes;
-        primitivesData = msg.preview.primitives;
+        projectHeadingCount = msg.headingCount || 0;
+        projectBodyCount = msg.bodyCount || 0;
+        if (!modesData) modesData = msg.preview.modes;
+        if (!primitivesData) primitivesData = msg.preview.primitives;
         
-        selectCollection('modes');
+        if (!activeCollection) selectCollection('modes');
+        
+        // Ensure duplicate notice is hidden properly if state resets
+        if (duplicateNotice) {
+          duplicateNotice.style.display = 'none';
+        }
+        
+        // Force the button to be enabled and clickable
+        actionBtn.disabled = false;
+        actionBtn.removeAttribute('disabled');
         
         if (modesExist && primitivesExist) {
-          actionBtn.disabled = true;
+          actionBtn.textContent = 'Load Library for Review';
         } else {
-          actionBtn.disabled = false;
+          actionBtn.textContent = 'Load Library for Review';
         }
       }
 
       if (msg.type === 'token-data-response') {
-        modesData = msg.modes;
-        primitivesData = msg.primitives;
+        console.log('[ui.js] Received token-data-response', { 
+          hasModesRaw: !!msg.modesRaw, 
+          hasPrimitivesRaw: !!msg.primitivesRaw 
+        });
+
+        // Parse the raw strings received from the backend to bypass IPC payload size limits
+        const incomingModes = msg.modesRaw ? JSON.parse(msg.modesRaw) : msg.modes;
+        const incomingPrimitives = msg.primitivesRaw ? JSON.parse(msg.primitivesRaw) : msg.primitives;
+        
+        console.log('[ui.js] Parsed incoming data', { 
+          modesCount: incomingModes?.variables?.length, 
+          primitivesCount: incomingPrimitives?.variables?.length 
+        });
+
+        // Compare current data with default library data
+        const diffs = { added: [], changed: [], deleted: [] };
+        const compareData = (currentData, defaultData) => {
+          if (!currentData || !defaultData) return;
+          currentData.variables.forEach(v => {
+            const defV = defaultData.variables.find(dv => dv.id === v.id);
+            if (!defV) {
+              diffs.added.push(v.name);
+            } else {
+              if (v.name !== defV.name) {
+                diffs.changed.push(`${defV.name} -> ${v.name}`);
+                return;
+              }
+              let isChanged = false;
+              for (const mId in v.valuesByMode) {
+                if (JSON.stringify(v.valuesByMode[mId]) !== JSON.stringify(defV.valuesByMode[mId])) {
+                  isChanged = true;
+                  break;
+                }
+              }
+              if (isChanged) diffs.changed.push(v.name);
+            }
+          });
+          defaultData.variables.forEach(dv => {
+            if (!currentData.variables.find(v => v.id === dv.id)) {
+              diffs.deleted.push(dv.name);
+            }
+          });
+        };
+
+        if (modesData) compareData(modesData, incomingModes);
+        if (primitivesData) compareData(primitivesData, incomingPrimitives);
+
+        const totalDiffs = diffs.added.length + diffs.changed.length + diffs.deleted.length;
+        const headerNotice = document.getElementById('header-changes-notice');
+        const headerText = document.getElementById('header-changes-text');
+        
+        if (totalDiffs > 0) {
+          headerNotice.style.display = 'flex';
+          headerText.textContent = `${totalDiffs} modification${totalDiffs > 1 ? 's' : ''} detected`;
+          
+          let modalHtml = '';
+          const createBox = (title, items, colorVar) => {
+            if (!items.length) return '';
+            return `
+              <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin-bottom: 8px;">
+                <div style="color: ${colorVar}; font-weight: 600; font-size: 12px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; border-bottom: 1px solid var(--border); padding-bottom: 8px;">
+                  <div style="width: 6px; height: 6px; border-radius: 50%; background: ${colorVar};"></div>
+                  ${title} (${items.length})
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 4px; max-height: 150px; overflow-y: auto; font-size: 11px; font-family: monospace;">
+                  ${items.map((n, i) => `<div style="padding: 4px 0; ${i !== items.length - 1 ? 'border-bottom: 1px dashed var(--border);' : ''}">${n}</div>`).join('')}
+                </div>
+              </div>
+            `;
+          };
+
+          modalHtml += createBox('Added', diffs.added, 'var(--success)');
+          modalHtml += createBox('Changed', diffs.changed, 'var(--accent)');
+          modalHtml += createBox('Deleted', diffs.deleted, 'var(--error)');
+          
+          document.getElementById('modifications-list').innerHTML = modalHtml;
+          
+          headerNotice.onclick = () => {
+            document.getElementById('modifications-modal').style.display = 'block';
+          };
+        } else {
+          headerNotice.style.display = 'none';
+        }
+
+        // We DO NOT overwrite user's modesData / primitivesData with incoming data here if they already exist.
+        // That is what was wiping out the custom edits! We only initialize them if they are completely null.
+        if (!modesData) modesData = incomingModes;
+        if (!primitivesData) primitivesData = incomingPrimitives;
+        
         state = 'sync';
         actionBtn.textContent = 'Sync to Variables';
         actionBtn.disabled = false;
         
-        selectCollection('modes');
+        // Don't force page change, just re-render current view
+        if (activeViewMode === 'collections') {
+          if (!activeCollection) selectCollection('modes');
+          else renderTable(activeCollection === 'modes' ? modesData : primitivesData);
+          document.getElementById('table-container').style.display = 'block';
+        } else {
+          renderLocalStylesView();
+        }
+        
         updateStatus('Review content before syncing');
       }
 
@@ -460,9 +554,43 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
       const modeKeys = Object.keys(data.modes);
       const modeNames = Object.values(data.modes);
       
-      const filteredVars = activeGroupPath === 'All' 
+      let filteredVars = activeGroupPath === 'All' 
         ? data.variables 
         : data.variables.filter(v => v.name.startsWith(activeGroupPath + '/'));
+
+      // Sort variables based on their first mode's value (descending for numbers, alphabetical for others)
+      filteredVars = filteredVars.sort((a, b) => {
+        const valA = a.valuesByMode[modeKeys[0]];
+        const valB = b.valuesByMode[modeKeys[0]];
+        
+        let resA = valA;
+        let resB = valB;
+
+        // Resolve aliases for sorting
+        if (typeof valA === 'object' && valA?.type === 'VARIABLE_ALIAS') {
+          resA = a.resolvedValuesByMode?.[modeKeys[0]]?.resolvedValue;
+        }
+        if (typeof valB === 'object' && valB?.type === 'VARIABLE_ALIAS') {
+          resB = b.resolvedValuesByMode?.[modeKeys[0]]?.resolvedValue;
+        }
+
+        // Special exception: 'heading_small' should be positioned before 'h1'
+        const nameA = a.name.split('/').pop().toLowerCase();
+        const nameB = b.name.split('/').pop().toLowerCase();
+        
+        if (nameA === 'heading_small' && nameB === 'h1') return -1;
+        if (nameA === 'h1' && nameB === 'heading_small') return 1;
+
+        const numA = parseFloat(resA);
+        const numB = parseFloat(resB);
+
+        if (!isNaN(numA) && !isNaN(numB)) {
+          return numB - numA; // Descending for numbers
+        }
+        
+        // Fallback to alphabetical name sorting if values aren't numbers
+        return a.name.localeCompare(b.name);
+      });
 
       tokenTotal.textContent = `${filteredVars.length} tokens`;
 
@@ -528,7 +656,7 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
                 return `
                   <td>
                     <div class="cell-content">
-                      <div class="alias-pill" title="${aliasName}" onclick="showPicker('${v.id}', '${mId}', event)">
+                      <div class="alias-pill" title="${aliasName}" onclick="showLinkedVariablesModal('${aliasName}', event)">
                         ${getTypeIcon(typeSymbol, 12)}
                         <span class="alias-name">${displayAlias}</span>
                       </div>
@@ -557,9 +685,8 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
                           <div class="color-swatch-picker" style="background-color: rgba(${color.r*255},${color.g*255},${color.b*255},${alpha})"></div>
                           <span style="font-weight:500; font-size:11px; color:var(--fg); line-height:1;" class="themed-text">${hex.slice(1)}</span>
                           <div class="opacity-separator"></div>
-                          <div class="opacity-value">
-                            <span class="themed-text">${opacityPercent}</span>
-                            <span style="opacity:0.5;" class="themed-text">%</span>
+                          <div class="opacity-value" style="user-select: none;">
+                            ${opacityPercent}%
                           </div>
                         </div>
                         <div class="link-btn" title="Link to Variable" onclick="showPicker('${v.id}', '${mId}', event); event.stopPropagation();">
@@ -739,6 +866,7 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
 
     window.openColorPicker = (vId, mId, event) => {
       event.stopPropagation();
+      saveToHistory();
       cpContext = { vId, mId };
       const targetVar = modesData.variables.find(v => v.id === vId) || primitivesData.variables.find(v => v.id === vId);
       const val = targetVar.valuesByMode[mId] || { r: 0, g: 0, b: 0, a: 1 };
@@ -792,30 +920,41 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
 
       if (mode === 'HSL') {
         inputGroup.innerHTML = `
-          <input type="number" class="cp-input" value="${Math.round(h)}" oninput="updateCPColor('h', this.value)" onkeydown="handleNumberKeydown(event, 'h')">
-          <input type="number" class="cp-input" value="${Math.round(s)}" oninput="updateCPColor('s', this.value)" onkeydown="handleNumberKeydown(event, 's')">
-          <input type="number" class="cp-input" value="${Math.round(l)}" oninput="updateCPColor('l', this.value)" onkeydown="handleNumberKeydown(event, 'l')">
-          <input type="number" class="cp-input" value="${Math.round(a*100)}" oninput="updateCPColor('a', this.value/100)" onkeydown="handleNumberKeydown(event, 'a', true)">
-          <span class="cp-input-percent">%</span>
+          <div style="display: flex; align-items: center; width: 100%; gap: 4px; background: #333; border: 1px solid #444; border-radius: 6px; padding: 0 4px; height: 100%;">
+            <input type="number" class="cp-input" style="height: 100%; font-size: 11px;" value="${Math.round(h)}" oninput="updateCPColor('h', this.value)" onkeydown="handleNumberKeydown(event, 'h')">
+            <input type="number" class="cp-input" style="height: 100%; font-size: 11px;" value="${Math.round(s)}" oninput="updateCPColor('s', this.value)" onkeydown="handleNumberKeydown(event, 's')">
+            <input type="number" class="cp-input" style="height: 100%; font-size: 11px;" value="${Math.round(l)}" oninput="updateCPColor('l', this.value)" onkeydown="handleNumberKeydown(event, 'l')">
+            <input type="number" class="cp-input" style="height: 100%; font-size: 11px;" value="${Math.round(a*100)}" oninput="updateCPColor('a', this.value/100)" onkeydown="handleNumberKeydown(event, 'a', true)">
+            <span class="cp-input-percent" style="font-size: 11px; opacity: 0.5;">%</span>
+          </div>
         `;
       } else if (mode === 'RGB') {
         const rgb = hslToRgb(h, s, l);
         inputGroup.innerHTML = `
-          <input type="number" class="cp-input" value="${Math.round(rgb.r)}" oninput="updateCPRGB('r', this.value)" onkeydown="handleNumberKeydown(event, 'r')">
-          <input type="number" class="cp-input" value="${Math.round(rgb.g)}" oninput="updateCPRGB('g', this.value)" onkeydown="handleNumberKeydown(event, 'g')">
-          <input type="number" class="cp-input" value="${Math.round(rgb.b)}" oninput="updateCPRGB('b', this.value)" onkeydown="handleNumberKeydown(event, 'b')">
-          <input type="number" class="cp-input" value="${Math.round(a*100)}" oninput="updateCPColor('a', this.value/100)" onkeydown="handleNumberKeydown(event, 'a', true)">
-          <span class="cp-input-percent">%</span>
+          <div style="display: flex; align-items: center; width: 100%; gap: 4px; background: #333; border: 1px solid #444; border-radius: 6px; padding: 0 4px; height: 100%;">
+            <input type="number" class="cp-input" style="height: 100%; font-size: 11px;" value="${Math.round(rgb.r)}" oninput="updateCPRGB('r', this.value)" onkeydown="handleNumberKeydown(event, 'r')">
+            <input type="number" class="cp-input" style="height: 100%; font-size: 11px;" value="${Math.round(rgb.g)}" oninput="updateCPRGB('g', this.value)" onkeydown="handleNumberKeydown(event, 'g')">
+            <input type="number" class="cp-input" style="height: 100%; font-size: 11px;" value="${Math.round(rgb.b)}" oninput="updateCPRGB('b', this.value)" onkeydown="handleNumberKeydown(event, 'b')">
+            <input type="number" class="cp-input" style="height: 100%; font-size: 11px;" value="${Math.round(a*100)}" oninput="updateCPColor('a', this.value/100)" onkeydown="handleNumberKeydown(event, 'a', true)">
+            <span class="cp-input-percent" style="font-size: 11px; opacity: 0.5;">%</span>
+          </div>
         `;
       } else {
         const rgb = hslToRgb(h, s, l);
         const hex = rgbToHex(rgb.r, rgb.g, rgb.b).replace('#', '');
+        inputGroup.style.background = 'transparent';
+        inputGroup.style.border = 'none';
         inputGroup.innerHTML = `
-          <div style="display: flex; align-items: center; width: 100%; gap: 6px;">
-            <input type="text" class="cp-input" style="flex: 1; text-align: left;" value="${hex.toUpperCase()}" oninput="updateCPHex(this.value)">
-            <div style="display: flex; align-items: center; background: var(--bg-hover); border-radius: 4px;">
-              <input type="number" class="cp-input" style="width: 40px; text-align: right;" value="${Math.round(a*100)}" oninput="updateCPColor('a', this.value/100)" onkeydown="handleNumberKeydown(event, 'a', true)">
-              <span class="cp-input-percent" style="padding-right: 8px; font-size: 11px; opacity: 0.5;">%</span>
+          <div style="display: flex; align-items: center; width: 100%; gap: 8px; height: 100%;">
+            <div style="display: flex; flex: 1; align-items: center; background: #333; border: 1px solid #444; border-radius: 6px; padding: 0 12px; height: 100%;">
+              <input type="text" class="cp-input" style="flex: 1; text-align: left; border: none; font-family: monospace; font-size: 11px; height: 100%; min-width: 50px;" value="${hex.toUpperCase()}" oninput="updateCPHex(this.value)">
+              
+              <div style="width: 1px; height: 16px; background: #444; margin: 0 16px;"></div>
+              
+              <div style="display: flex; align-items: center; width: 45px; height: 100%; justify-content: flex-end;">
+                <input type="number" class="cp-input" style="width: 30px; text-align: right; border: none; font-size: 11px; height: 100%; padding: 0;" value="${Math.round(a*100)}" oninput="updateCPColor('a', this.value/100)" onkeydown="handleNumberKeydown(event, 'a', true)">
+                <span class="cp-input-percent" style="font-size: 11px; opacity: 0.5; padding-left: 2px;">%</span>
+              </div>
             </div>
           </div>
         `;
@@ -1017,7 +1156,15 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
     window.updateVariableName = (vId, name) => {
       saveToHistory();
       const v = modesData.variables.find(item => item.id === vId) || primitivesData.variables.find(item => item.id === vId);
-      if (v) v.name = name;
+      if (v) {
+        const parts = v.name.split('/');
+        if (parts.length > 1) {
+          parts[parts.length - 1] = name;
+          v.name = parts.join('/');
+        } else {
+          v.name = name;
+        }
+      }
     };
 
     window.updateVariableValue = (vId, mId, val) => {
@@ -1047,7 +1194,402 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
 
 
 
-    // Font Loader for eager + lazy preview loading
+    const viewToggleBtn = document.getElementById('view-toggle-btn');
+    const tabCollections = document.getElementById('tab-collections');
+    const tabLocalStyles = document.getElementById('tab-local-styles');
+    const collectionsView = document.getElementById('collections-view');
+    const localStylesView = document.getElementById('local-styles-view');
+    
+    let activeViewMode = 'collections';
+    let activeLSNav = 'grid';
+    const localStyleDraft = {
+      grid: [
+        { key: 'expanded', name: 'Grid/Expanded', count: '12', color: '#0080FF', opacity: '10', type: 'Stretch', width: 'Auto', margin: '156', gutter: '32' },
+        { key: 'compact', name: 'Grid/Compact', count: '12', color: '#0080FF', opacity: '10', type: 'Stretch', width: 'Auto', margin: '56', gutter: '32' },
+        { key: 'mobile', name: 'Grid/Mobile', count: '4', color: '#0080FF', opacity: '10', type: 'Stretch', width: 'Auto', margin: '16', gutter: '16' }
+      ],
+      heading: {},
+      body: {}
+    };
+
+    window.switchLSNav = (navId) => {
+      activeLSNav = navId;
+      document.querySelectorAll('#local-styles-view .collection-item').forEach(el => el.classList.remove('active'));
+      document.getElementById(`ls-nav-${navId}`).classList.add('active');
+      
+      const titleMap = { grid: 'Grid System', heading: 'Heading Text', body: 'Text' };
+      document.getElementById('ls-view-title').textContent = titleMap[navId];
+      
+      renderLocalStylesView();
+    };
+
+    tabCollections.onclick = () => {
+      activeViewMode = 'collections';
+      tabCollections.style.background = 'var(--accent)';
+      tabCollections.style.color = '#fff';
+      tabCollections.style.opacity = '1';
+      tabLocalStyles.style.background = 'transparent';
+      tabLocalStyles.style.color = 'var(--fg)';
+      tabLocalStyles.style.opacity = '0.7';
+      collectionsView.style.display = 'flex';
+      localStylesView.style.display = 'none';
+    };
+
+    tabLocalStyles.onclick = () => {
+      activeViewMode = 'local-styles';
+      tabLocalStyles.style.background = 'var(--accent)';
+      tabLocalStyles.style.color = '#fff';
+      tabLocalStyles.style.opacity = '1';
+      tabCollections.style.background = 'transparent';
+      tabCollections.style.color = 'var(--fg)';
+      tabCollections.style.opacity = '0.7';
+      collectionsView.style.display = 'none';
+      localStylesView.style.display = 'flex';
+      renderLocalStylesView();
+    };
+
+    function renderLocalStylesView() {
+      const content = document.getElementById('local-styles-content');
+      const importBtn = document.getElementById('ls-import-btn');
+      const escapeHtml = (value) => String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+      const toNumber = (value, fallback = 0) => {
+        const parsed = parseFloat(String(value ?? '').replace(/[^0-9.-]/g, ''));
+        return Number.isFinite(parsed) ? parsed : fallback;
+      };
+      const setImportButton = (label, isDisabled, onClick) => {
+        importBtn.textContent = label;
+        importBtn.disabled = isDisabled;
+        importBtn.onclick = isDisabled ? null : onClick;
+      };
+      
+      if (!modesData || !modesData.variables || modesData.variables.length === 0) {
+        content.innerHTML = `
+          <div style="padding: 60px 24px; text-align: center; color: var(--muted);">
+            <svg viewBox="0 0 24 24" style="width: 32px; height: 32px; margin-bottom: 12px; opacity: 0.2; display: inline-block;"><path d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+            <div style="margin-bottom: 16px;">Load library first to view available styles</div>
+            <button class="btn-primary" onclick="document.getElementById('action-btn').click()" style="padding: 6px 12px;">Load Library</button>
+          </div>
+        `;
+        setImportButton('Import to Figma', true, null);
+        return;
+      }
+
+      const allVariables = [
+        ...(modesData?.variables || []),
+        ...(primitivesData?.variables || [])
+      ];
+
+      const getResolvedVal = (v) => {
+        if (!v) return '';
+        const val = v.valuesByMode[Object.keys(v.valuesByMode)[0]];
+        if (typeof val === 'object' && val.type === 'VARIABLE_ALIAS') {
+          const target = allVariables.find(t => t.id === val.id);
+          return target ? target.valuesByMode[Object.keys(target.valuesByMode)[0]] : val.id;
+        }
+        return val;
+      };
+      const getResolvedByPath = (path) => {
+        const variable = allVariables.find(v => v.name.toLowerCase() === path.toLowerCase());
+        return variable ? getResolvedVal(variable) : '';
+      };
+      const fontFamilyDefault = String(
+        getResolvedByPath('Typography/Font Family/font-family') ||
+        getResolvedByPath('Typography/Font Family/sans') ||
+        'Inter'
+      );
+      const fontPathDefault = allVariables.find(v => v.name.toLowerCase() === 'typography/font family/font-family')
+        ?.name || allVariables.find(v => v.name.toLowerCase().includes('typography/font family'))
+          ?.name || 'Typography/Font Family/font-family';
+      const primitiveFontWeightOptions = (primitivesData?.variables || [])
+        .filter(v => v.name.startsWith('Typography/Font Weight/'))
+        .map(v => String(getResolvedVal(v) || v.name.split('/').pop() || '').trim())
+        .filter(Boolean);
+      const textCaseOptions = ['Original', 'Upper', 'Lower', 'Title', 'Small Caps'];
+
+      const isHeadingToken = (name) => name.startsWith('Typography/Heading/');
+      const isTextToken = (name) => name.startsWith('Typography/Text/') || name.startsWith('Typography/Body/');
+      const headings = modesData.variables.filter(v => isHeadingToken(v.name));
+      const bodyTexts = modesData.variables.filter(v => isTextToken(v.name));
+
+      // Update sidebar counts
+      document.getElementById('ls-count-heading').textContent = headings.length;
+      document.getElementById('ls-count-body').textContent = bodyTexts.length;
+
+      // Ensure sort logic for typography variables (highest number down to lowest based on first mode value)
+      const sortTypography = (arr) => {
+        return arr.sort((a, b) => {
+          // Special exception: 'heading_small' should be positioned before 'h1'
+          const nameA = a.name.split('/').pop().toLowerCase();
+          const nameB = b.name.split('/').pop().toLowerCase();
+          
+          if (nameA === 'heading_small' && nameB === 'h1') return -1;
+          if (nameA === 'h1' && nameB === 'heading_small') return 1;
+
+          const valA = parseFloat(getResolvedVal(a)) || 0;
+          const valB = parseFloat(getResolvedVal(b)) || 0;
+          return valB - valA; // Descending
+        });
+      };
+
+      const sortedHeadings = sortTypography(headings);
+      const sortedBodyTexts = sortTypography(bodyTexts);
+
+      const headingLineHeightMap = {
+        heading_3xlarge: 100,
+        heading_2xlarge: 100,
+        heading_xlarge: 100,
+        heading_large: 110,
+        heading_medium: 110,
+        heading_small: 120,
+        h1: 120,
+        h2: 120,
+        h3: 120,
+        h4: 130,
+        h5: 140,
+        h6: 140
+      };
+
+      const getTypographyRow = (section, variable) => {
+        const rowKey = variable.id;
+        if (!localStyleDraft[section][rowKey]) {
+          const tokenName = variable.name.split('/').pop();
+          localStyleDraft[section][rowKey] = {
+            key: rowKey,
+            name: tokenName,
+            path: variable.name,
+            fontPath: fontPathDefault,
+            font: fontFamilyDefault,
+            fontWeight: section === 'heading' ? 'Semi Bold' : 'Regular',
+            size: String(getResolvedVal(variable) ?? ''),
+            lineHeight: String(section === 'heading' ? (headingLineHeightMap[tokenName.toLowerCase()] || 120) : 140),
+            lineSpacing: '0',
+            case: 'Original'
+          };
+        } else {
+          localStyleDraft[section][rowKey].font = fontFamilyDefault;
+          localStyleDraft[section][rowKey].size = String(getResolvedVal(variable) ?? '');
+        }
+        return localStyleDraft[section][rowKey];
+      };
+
+      const createEditableCell = (section, rowKey, field, value, options = null) => {
+        const hasOptions = Array.isArray(options) && options.length > 0;
+        const optionsAttr = hasOptions ? ` data-ls-options='${escapeHtml(JSON.stringify(options))}'` : '';
+        const editableMode = hasOptions ? 'false' : 'true';
+        const extraClass = hasOptions ? ' ls-select-cell' : '';
+        return `
+          <td><div class="cell-content"><span class="table-input${extraClass}" contenteditable="${editableMode}" data-ls-section="${section}" data-ls-row="${rowKey}" data-ls-field="${field}"${optionsAttr}>${escapeHtml(value)}</span></div></td>
+        `;
+      };
+      const createReadonlyCell = (value) => `
+        <td><div class="cell-content"><span class="table-input">${escapeHtml(value)}</span></div></td>
+      `;
+      const createLinkedTokenCell = (path, label = path) => `
+        <td class="ls-token-cell">
+          <div class="cell-content">
+            <div class="alias-pill" title="${escapeHtml(path)}" onclick="showLinkedVariablesModal('${escapeHtml(path)}', event)">
+              <span class="type-icon">
+                <svg viewBox="0 0 24 24" style="width: 12px; height: 12px; opacity: 0.75;">
+                  <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="2"></rect>
+                  <text x="12" y="16" text-anchor="middle" font-size="10" fill="currentColor" font-family="Inter, sans-serif">#</text>
+                </svg>
+              </span>
+              <span class="alias-name">${escapeHtml(label)}</span>
+            </div>
+            <span class="link-btn" title="Connected" onclick="showLinkedVariablesModal('${escapeHtml(path)}', event)">
+              <svg viewBox="0 0 24 24" style="width:14px;height:14px;"><path d="M18.84 15.16l1.16-1.16a5 5 0 0 0-7.07-7.07l-1.16 1.16M14 11l-4 4M5.16 8.84L4 10a5 5 0 0 0 7.07 7.07l1.16-1.16M2 2l20 20" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"></path></svg>
+            </span>
+          </div>
+        </td>
+      `;
+
+      const createGridRow = (row) => `
+        <tr>
+          ${createReadonlyCell(row.name)}
+          ${createEditableCell('grid', row.key, 'count', row.count)}
+          ${createEditableCell('grid', row.key, 'color', row.color)}
+          ${createEditableCell('grid', row.key, 'opacity', row.opacity)}
+          ${createEditableCell('grid', row.key, 'type', row.type)}
+          ${createEditableCell('grid', row.key, 'width', row.width)}
+          ${createEditableCell('grid', row.key, 'margin', row.margin)}
+          ${createEditableCell('grid', row.key, 'gutter', row.gutter)}
+        </tr>
+      `;
+      const createTypographyRowHtml = (section, row) => `
+        <tr>
+          ${createReadonlyCell(row.name)}
+          ${createLinkedTokenCell(row.path)}
+          ${createLinkedTokenCell(row.fontPath, row.font)}
+          ${createEditableCell(section, row.key, 'fontWeight', row.fontWeight, primitiveFontWeightOptions)}
+          ${createLinkedTokenCell(row.path, row.size)}
+          ${createEditableCell(section, row.key, 'lineHeight', row.lineHeight)}
+          ${createEditableCell(section, row.key, 'lineSpacing', row.lineSpacing)}
+          ${createEditableCell(section, row.key, 'case', row.case, textCaseOptions)}
+        </tr>
+      `;
+      const bindEditors = () => {
+        const persistValue = (editableEl, overrideValue = null) => {
+          const section = editableEl.dataset.lsSection;
+          const rowKey = editableEl.dataset.lsRow;
+          const field = editableEl.dataset.lsField;
+          const value = (overrideValue ?? editableEl.textContent).trim();
+          if (!section || !rowKey || !field) return;
+          if (section === 'grid') {
+            const targetRow = localStyleDraft.grid.find(row => row.key === rowKey);
+            if (!targetRow) return;
+            targetRow[field] = value;
+            return;
+          }
+          if (!localStyleDraft[section][rowKey]) return;
+          localStyleDraft[section][rowKey][field] = value;
+        };
+        content.querySelectorAll('[data-ls-field]').forEach((editableEl) => {
+          const options = editableEl.dataset.lsOptions ? JSON.parse(editableEl.dataset.lsOptions) : null;
+          if (Array.isArray(options) && options.length > 0) {
+            editableEl.addEventListener('click', () => {
+              const current = editableEl.textContent.trim().toLowerCase();
+              const currentIndex = options.findIndex(option => String(option).toLowerCase() === current);
+              const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % options.length : 0;
+              const nextValue = String(options[nextIndex]);
+              editableEl.textContent = nextValue;
+              persistValue(editableEl, nextValue);
+            });
+            return;
+          }
+          editableEl.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              editableEl.blur();
+            }
+          });
+          editableEl.addEventListener('blur', () => {
+            persistValue(editableEl);
+          });
+        });
+      };
+
+      let tableHtml = '';
+
+      if (activeLSNav === 'grid') {
+        const theadHtml = `
+          <thead>
+            <tr>
+              <th class="col-lg">Name</th>
+              <th class="col-xs">Count</th>
+              <th class="col-sm">Color</th>
+              <th class="col-xs">Opacity</th>
+              <th class="col-sm">Type</th>
+              <th class="col-xs">Width</th>
+              <th class="col-xs">Margin</th>
+              <th class="col-xs">Gutter</th>
+            </tr>
+          </thead>
+        `;
+        tableHtml = `
+          <table>
+            ${theadHtml}
+            <tbody>
+              ${localStyleDraft.grid.map(row => createGridRow(row)).join('')}
+            </tbody>
+          </table>
+        `;
+        setImportButton('Import Grid Styles', localStyleDraft.grid.length === 0, () => {
+          const rows = localStyleDraft.grid.map(row => ({
+            name: row.name,
+            count: Math.max(1, Math.round(toNumber(row.count, 12))),
+            color: row.color || '#0080FF',
+            opacity: Math.min(100, Math.max(0, toNumber(row.opacity, 10))),
+            type: row.type || 'Stretch',
+            width: row.width || 'Auto',
+            margin: Math.max(0, toNumber(row.margin, 0)),
+            gutter: Math.max(0, toNumber(row.gutter, 0))
+          }));
+          parent.postMessage({ pluginMessage: { type: 'create-grid-style', data: { rows } } }, '*');
+        });
+      } else if (activeLSNav === 'heading') {
+        const theadHtml = `
+          <thead>
+            <tr>
+              <th class="col-md">Name</th>
+              <th class="col-lg">Linked Token</th>
+              <th class="col-md">Font</th>
+              <th class="col-sm">Font Weight</th>
+              <th class="col-xs">Size</th>
+              <th class="col-xs">Line Height</th>
+              <th class="col-xs">Line Spacing</th>
+              <th class="col-xs">Case</th>
+            </tr>
+          </thead>
+        `;
+        if (headings.length > 0) {
+          const rows = sortedHeadings.map(h => getTypographyRow('heading', h));
+          tableHtml = `
+            <table>
+              ${theadHtml}
+              <tbody>
+                ${rows.map(row => createTypographyRowHtml('heading', row)).join('')}
+              </tbody>
+            </table>
+          `;
+          setImportButton('Import Heading Styles', rows.length === 0, () => {
+            parent.postMessage({ pluginMessage: { type: 'create-text-styles', data: { section: 'heading', rows } } }, '*');
+          });
+        } else {
+          tableHtml = `
+            <div style="padding: 60px 24px; text-align: center; color: var(--muted);">
+              <div style="margin-bottom: 16px;">No heading variables detected.</div>
+            </div>
+          `;
+          setImportButton('Import Heading Styles', true, null);
+        }
+      } else if (activeLSNav === 'body') {
+        const theadHtml = `
+          <thead>
+            <tr>
+              <th class="col-md">Name</th>
+              <th class="col-lg">Linked Token</th>
+              <th class="col-md">Font</th>
+              <th class="col-sm">Font Weight</th>
+              <th class="col-xs">Size</th>
+              <th class="col-xs">Line Height</th>
+              <th class="col-xs">Line Spacing</th>
+              <th class="col-xs">Case</th>
+            </tr>
+          </thead>
+        `;
+        if (bodyTexts.length > 0) {
+          const rows = sortedBodyTexts.map(b => getTypographyRow('body', b));
+          tableHtml = `
+            <table>
+              ${theadHtml}
+              <tbody>
+                ${rows.map(row => createTypographyRowHtml('body', row)).join('')}
+              </tbody>
+            </table>
+          `;
+          setImportButton('Import Text Styles', rows.length === 0, () => {
+            parent.postMessage({ pluginMessage: { type: 'create-text-styles', data: { section: 'body', rows } } }, '*');
+          });
+        } else {
+          tableHtml = `
+            <div style="padding: 60px 24px; text-align: center; color: var(--muted);">
+              <div style="margin-bottom: 16px;">No body variables detected.</div>
+            </div>
+          `;
+          setImportButton('Import Text Styles', true, null);
+        }
+      }
+
+      content.innerHTML = tableHtml;
+      bindEditors();
+    }
+
+    // Remove old listeners since they are dynamically bound in renderLocalStylesView now
     const fontLoader = {
       loaded: new Set(),
       queue: new Map(),
@@ -1497,6 +2039,9 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
       
       pickerOverlay.style.display = 'block';
       pickerSearchInput.value = '';
+      pickerSearchInput.disabled = false;
+      pickerSearchInput.placeholder = 'Search';
+      document.getElementById('picker-title').textContent = 'Linked Variables';
       pickerSearchInput.focus();
       
       renderPickerList('');
@@ -1505,6 +2050,9 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
     window.hidePicker = () => {
       pickerOverlay.style.display = 'none';
       currentPickerContext = null;
+      pickerSearchInput.disabled = false;
+      pickerSearchInput.placeholder = 'Search';
+      document.getElementById('picker-title').textContent = 'Google Fonts';
     };
 
     function updatePickerActive() {
@@ -1529,9 +2077,131 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
       updatePickerActive();
     }
 
+    function escapePickerHtml(value) {
+      return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function getAllVariables() {
+      return [
+        ...(modesData?.variables || []),
+        ...(primitivesData?.variables || [])
+      ];
+    }
+
+    function resolveVariableValue(variable) {
+      if (!variable) return '';
+      const modeIds = Object.keys(variable.valuesByMode || {});
+      if (modeIds.length === 0) return '';
+      const val = variable.valuesByMode[modeIds[0]];
+      if (val && typeof val === 'object' && val.type === 'VARIABLE_ALIAS') {
+        const source = getAllVariables().find(v => v.id === val.id);
+        if (!source) return '';
+        return resolveVariableValue(source);
+      }
+      return val;
+    }
+
+    function getRelatedVariables(path) {
+      const normalized = String(path || '').trim().toLowerCase();
+      const all = getAllVariables();
+      const target = all.find(v => v.name.toLowerCase() === normalized);
+      if (!target) return [];
+      const lastSlash = target.name.lastIndexOf('/');
+      const basePath = lastSlash > -1 ? target.name.slice(0, lastSlash) : '';
+      return all
+        .filter(v => v.type === target.type && (basePath ? v.name.startsWith(`${basePath}/`) : !v.name.includes('/')))
+        .sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    function getPickerValue(variable) {
+      const resolved = resolveVariableValue(variable);
+      if (typeof resolved === 'number') return String(Math.round(resolved * 100) / 100);
+      if (typeof resolved === 'string') return resolved;
+      if (resolved === null || resolved === undefined) return '';
+      return JSON.stringify(resolved);
+    }
+
+    window.renderLinkedPreviewList = (query) => {
+      if (!currentPickerContext || currentPickerContext.type !== 'linked-preview') return;
+      const search = String(query || '').toLowerCase();
+      const list = (currentPickerContext.linkedCandidates || []).filter(v =>
+        !search || v.name.toLowerCase().includes(search)
+      );
+      pickerList.innerHTML = '';
+      if (list.length === 0) {
+        pickerList.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--muted); font-size: 11px;">No matching variables found</div>';
+        pickerItems = [];
+        pickerIndex = -1;
+        return;
+      }
+      const groupName = currentPickerContext.baseLabel || 'Related Variables';
+      const title = document.createElement('div');
+      title.className = 'picker-group-title';
+      title.textContent = groupName;
+      pickerList.appendChild(title);
+      list.forEach(v => {
+        const opt = document.createElement('div');
+        const isSelected = v.name.toLowerCase() === String(currentPickerContext.linkedPath || '').toLowerCase();
+        opt.className = `picker-option ${isSelected ? 'selected' : ''}`;
+        const typeIcon = `
+          <svg viewBox="0 0 24 24" style="width: 14px; height: 14px; opacity: 0.8;">
+            <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="2"></rect>
+            <text x="12" y="16" text-anchor="middle" font-size="12" fill="currentColor" font-family="Inter, sans-serif">#</text>
+          </svg>
+        `;
+        const valueLabel = v.type === 'FLOAT' ? getPickerValue(v) : '';
+        opt.innerHTML = `
+          <span class="type-icon">${typeIcon}</span>
+          <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapePickerHtml(v.name.split('/').pop() || v.name)}</span>
+          ${valueLabel ? `<span class="linked-row-value">${escapePickerHtml(valueLabel)}</span>` : ''}
+        `;
+        opt.onclick = () => {
+          currentPickerContext.linkedPath = v.name;
+          window.renderLinkedPreviewList(pickerSearchInput.value);
+        };
+        pickerList.appendChild(opt);
+      });
+      pickerItems = Array.from(pickerList.querySelectorAll('.picker-option'));
+      pickerIndex = -1;
+      updatePickerActive();
+    };
+
+    window.showLinkedVariablesModal = (path, event) => {
+      if (event) event.stopPropagation();
+      const rect = event?.currentTarget?.getBoundingClientRect();
+      const normalizedPath = String(path || '').trim();
+      const related = getRelatedVariables(normalizedPath);
+      const all = getAllVariables();
+      const selected = all.find(v => v.name.toLowerCase() === normalizedPath.toLowerCase());
+      const baseLabel = selected?.name.includes('/') ? selected.name.split('/').slice(0, -1).join('/') : 'Related Variables';
+      currentPickerContext = {
+        type: 'linked-preview',
+        linkedPath: normalizedPath,
+        linkedCandidates: related.length > 0 ? related : all.filter(v => v.name.toLowerCase() === normalizedPath.toLowerCase()),
+        baseLabel
+      };
+      document.getElementById('picker-title').textContent = 'Linked Variables';
+      pickerSearchInput.value = '';
+      pickerSearchInput.disabled = false;
+      pickerSearchInput.placeholder = 'Search';
+      pickerOverlay.style.display = 'block';
+      pickerSearchInput.focus();
+      const picker = document.getElementById('variable-picker');
+      picker.style.top = `${Math.min((rect?.bottom || 80) + 6, window.innerHeight - 330)}px`;
+      picker.style.left = `${Math.min(rect?.left || 24, window.innerWidth - 250)}px`;
+      window.renderLinkedPreviewList('');
+    };
+
     window.filterPickerResults = (query) => {
       if (currentPickerContext?.type === 'family' || currentPickerContext?.type === 'weight') {
         renderFontPickerOptions(currentPickerContext.type, query);
+      } else if (currentPickerContext?.type === 'linked-preview') {
+        window.renderLinkedPreviewList(query);
       } else {
         renderPickerList(query);
       }
@@ -1544,6 +2214,18 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
       const { vId, currentAliasId } = currentPickerContext;
       const targetVar = modesData.variables.find(v => v.id === vId) || primitivesData.variables.find(v => v.id === vId);
       if (!targetVar) return;
+      const getPickerValue = (variable) => {
+        const raw = variable.valuesByMode[Object.keys(variable.valuesByMode)[0]];
+        if (typeof raw === 'number') return String(Math.round(raw * 100) / 100);
+        if (typeof raw === 'string') return raw;
+        if (raw && typeof raw === 'object' && raw.type === 'VARIABLE_ALIAS') {
+          const source = modesData.variables.find(sv => sv.id === raw.id) || primitivesData.variables.find(sv => sv.id === raw.id);
+          if (!source) return '';
+          const sourceRaw = source.valuesByMode[Object.keys(source.valuesByMode)[0]];
+          return typeof sourceRaw === 'number' ? String(Math.round(sourceRaw * 100) / 100) : String(sourceRaw ?? '');
+        }
+        return '';
+      };
 
       // Group variables by collection for the picker
       const collections = [
@@ -1572,16 +2254,18 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
             const opt = document.createElement('div');
             const isSelected = v.id === currentAliasId;
             opt.className = `picker-option ${isSelected ? 'selected' : ''}`;
-            
-            let typeIcon = '#';
-            if (v.type === 'COLOR') typeIcon = '◐';
-            if (v.type === 'STRING') typeIcon = 'T';
-            if (v.type === 'BOOLEAN') typeIcon = 'B';
+            const typeIcon = `
+              <svg viewBox="0 0 24 24" style="width: 14px; height: 14px; opacity: 0.8;">
+                <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="2"></rect>
+                <text x="12" y="16" text-anchor="middle" font-size="12" fill="currentColor" font-family="Inter, sans-serif">#</text>
+              </svg>
+            `;
+            const valueLabel = v.type === 'FLOAT' ? getPickerValue(v) : '';
 
             opt.innerHTML = `
               <span class="type-icon">${typeIcon}</span>
-              <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${v.name}</span>
-              ${isSelected ? '<svg viewBox="0 0 24 24" style="width:12px;height:12px;color:var(--accent);"><path d="M20 6L9 17L4 12" stroke-width="3"></path></svg>' : ''}
+              <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${v.name.split('/').pop() || v.name}</span>
+              ${valueLabel ? `<span class="linked-row-value">${valueLabel}</span>` : ''}
             `;
             opt.onclick = () => selectPickerVariable(v.id, v.name);
             pickerList.appendChild(opt);
@@ -1599,7 +2283,7 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
       }
       
       pickerItems = Array.from(pickerList.querySelectorAll('.picker-option'));
-      pickerIndex = pickerItems.length ? 0 : -1;
+      pickerIndex = -1;
       updatePickerActive();
     }
 
