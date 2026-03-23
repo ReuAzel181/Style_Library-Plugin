@@ -1,40 +1,54 @@
-Below are the steps to get your plugin running. You can also find instructions at:
+# Modular Token-Driven UI System
 
-  https://www.figma.com/plugin-docs/plugin-quickstart-guide/
+This token system follows a layered architecture aligned with the Figma Variables model. Tokens are split into focused JSON files so updates stay scalable, traceable, and easy to maintain.
 
-This plugin template uses Typescript and NPM, two standard tools in creating JavaScript applications.
+## Architecture Overview
 
-First, download Node.js which comes with NPM. This will allow you to install TypeScript and other
-libraries. You can find the download link here:
+### 1) Primitive Tokens (`/primitive`)
+Primitives define raw, source values and should never reference other tokens.
 
-  https://nodejs.org/en/download/
+- `color.json`: Brand and grayscale scales
+- `spacing.json`: 8px-based spacing scale
+- `radius.json`: Standardized corner radii
 
-Next, install TypeScript using the command:
+### 2) Global Tokens (`/global`)
+Global tokens reference primitives and define semantic meaning and layout rules.
 
-  npm install -g typescript
+- `typography.json`: Font families, weights, and size scales per mode
+- `layout.json`: Container widths, spacing, and responsive layout values
+- `semantic.json`: Semantic colors, borders, and elevation/shadow values
 
-Finally, in the directory of your plugin, get the latest type definitions for the plugin API by running:
+### 3) Component Tokens (`/components`)
+Component tokens define implementation-ready values per component and variant.
 
-  npm install --save-dev @figma/plugin-typings
+- Variants are split by file (for example, `button.primary.tokens.json`)
+- States are explicit per variant (`Default`, `Hover`, `Active`, `Focus`, `Disabled`)
 
-If you are familiar with JavaScript, TypeScript will look very familiar. In fact, valid JavaScript code
-is already valid Typescript code.
+## Token Reference Syntax
 
-TypeScript adds type annotations to variables. This allows code editors such as Visual Studio Code
-to provide information about the Figma API while you are writing code, as well as help catch bugs
-you previously didn't notice.
+Cross-token references use curly-brace paths:
 
-For more information, visit https://www.typescriptlang.org/
+- `{primitive.color.brand.500}`
+- `{global.semantic.color.border.focus}`
 
-Using TypeScript requires a compiler to convert TypeScript (code.ts) into JavaScript (code.js)
-for the browser to run.
+## Responsive Modes (Desktop / Mobile)
 
-We recommend writing TypeScript code using Visual Studio code:
+Global token groups such as `typography` and `layout` support mode-specific values:
 
-1. Download Visual Studio Code if you haven't already: https://code.visualstudio.com/.
-2. Open this directory in Visual Studio Code.
-3. Compile TypeScript to JavaScript: Run the "Terminal > Run Build Task..." menu item,
-    then select "npm: watch". You will have to do this again every time
-    you reopen Visual Studio Code.
+```json
+"h1": {
+  "desktop": { "value": "48px", "type": "dimension" },
+  "mobile": { "value": "32px", "type": "dimension" }
+}
+```
 
-That's it! Visual Studio Code will regenerate the JavaScript file every time you save.
+## Import and Mapping
+
+`token-mapper.ts` imports an external dataset that matches `import-schema.json` and applies overrides to the base system. This is useful for white-labeling and external variable ingestion.
+
+### Mapping Flow
+
+1. Load base tokens
+2. Provide an override dataset
+3. Merge overrides and recalculate derived scales when required
+4. Output a fully resolved token system

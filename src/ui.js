@@ -1,4 +1,6 @@
 import { GOOGLE_FONTS } from "./google-fonts.js";
+import { createLocalStylesController } from "./local-styles-controller.js";
+import { createCollectionsTableController } from "./collections-table-controller.js";
 
     const statusMsg = document.getElementById('status-msg');
     const progressFill = document.getElementById('progress-fill');
@@ -12,9 +14,17 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
     const tokenTotal = document.getElementById('token-total');
     const duplicateNotice = document.getElementById('duplicate-notice');
     const selectionCount = document.getElementById('selection-count');
+    const toastLayer = document.getElementById('toast-layer');
+    const confirmOverlay = document.getElementById('confirm-overlay');
+    const confirmTitle = document.getElementById('confirm-title');
+    const confirmMessage = document.getElementById('confirm-message');
+    const confirmCancelBtn = document.getElementById('confirm-cancel-btn');
+    const confirmOkBtn = document.getElementById('confirm-ok-btn');
     
     let modesData = null;
     let primitivesData = null;
+    let figmaModesData = null;
+    let figmaPrimitivesData = null;
     let modesExist = false;
     let primitivesExist = false;
     let projectHeadingCount = 0;
@@ -165,6 +175,49 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
 
     parent.postMessage({ pluginMessage: { type: 'check-collections' } }, '*');
 
+    let confirmResolve = null;
+
+    function showToast(message, type = 'default', duration = 2200) {
+      if (!toastLayer) return;
+      const toast = document.createElement('div');
+      toast.className = `toast-card ${type}`;
+      toast.textContent = message;
+      toastLayer.appendChild(toast);
+      requestAnimationFrame(() => {
+        toast.classList.add('show');
+      });
+      const removeToast = () => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 180);
+      };
+      setTimeout(removeToast, duration);
+    }
+
+    function hideConfirmDialog(result = false) {
+      if (!confirmOverlay) return;
+      confirmOverlay.style.display = 'none';
+      if (confirmResolve) {
+        confirmResolve(result);
+        confirmResolve = null;
+      }
+    }
+
+    function showConfirmDialog({ title = 'Confirm action', message = 'Are you sure?', okLabel = 'Confirm', cancelLabel = 'Cancel' } = {}) {
+      if (!confirmOverlay) return Promise.resolve(false);
+      confirmTitle.textContent = title;
+      confirmMessage.textContent = message;
+      confirmOkBtn.textContent = okLabel;
+      confirmCancelBtn.textContent = cancelLabel;
+      confirmOverlay.style.display = 'flex';
+      return new Promise((resolve) => {
+        confirmResolve = resolve;
+      });
+    }
+
+    window.hideConfirmDialog = () => hideConfirmDialog(false);
+    confirmCancelBtn.onclick = () => hideConfirmDialog(false);
+    confirmOkBtn.onclick = () => hideConfirmDialog(true);
+
     function updateStatus(text, success = false) {
       if (statusMsg) {
         statusMsg.textContent = text;
@@ -176,6 +229,13 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
           progressFill.style.width = '0%';
         }, 3000);
       }
+    }
+
+    function getLocalStylesSource() {
+      return {
+        modesData: figmaModesData || { name: 'Modes (Desktop / Mobile)', modes: {}, variables: [] },
+        primitivesData: figmaPrimitivesData || { name: 'Primitives', modes: {}, variables: [] }
+      };
     }
 
     actionBtn.onclick = () => {
@@ -212,10 +272,13 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
       if (!msg) return;
       
       if (msg.type === 'collections-status') {
+        localStylesSyncPending = false;
         modesExist = msg.modesExist;
         primitivesExist = msg.primitivesExist;
         projectHeadingCount = msg.headingCount || 0;
         projectBodyCount = msg.bodyCount || 0;
+        figmaModesData = msg.figmaPreview?.modes || { name: 'Modes (Desktop / Mobile)', modes: {}, variables: [] };
+        figmaPrimitivesData = msg.figmaPreview?.primitives || { name: 'Primitives', modes: {}, variables: [] };
         if (!modesData) modesData = msg.preview.modes;
         if (!primitivesData) primitivesData = msg.preview.primitives;
         
@@ -234,6 +297,9 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
           actionBtn.textContent = 'Load Library for Review';
         } else {
           actionBtn.textContent = 'Load Library for Review';
+        }
+        if (activeViewMode === 'local-styles') {
+          localStylesController.render(getLocalStylesSource());
         }
       }
 
@@ -337,7 +403,7 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
           else renderTable(activeCollection === 'modes' ? modesData : primitivesData);
           document.getElementById('table-container').style.display = 'block';
         } else {
-          renderLocalStylesView();
+          localStylesController.render(getLocalStylesSource());
         }
         
         updateStatus('Review content before syncing');
@@ -538,8 +604,14 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
       }, 50);
     };
 
-    window.deleteVariable = function(vId) {
-      if (!confirm("Are you sure you want to delete this variable?")) return;
+    window.deleteVariable = async function(vId) {
+      const accepted = await showConfirmDialog({
+        title: 'Delete variable',
+        message: 'Are you sure you want to delete this variable?',
+        okLabel: 'Delete',
+        cancelLabel: 'Cancel'
+      });
+      if (!accepted) return;
       saveToHistory();
 
       const data = activeCollection === 'modes' ? modesData : primitivesData;
@@ -548,265 +620,11 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
       data.variables = data.variables.filter(v => v.id !== vId);
       renderTable(data);
       renderSidebar();
+      showToast('Variable deleted', 'success');
     };
 
     function renderTable(data) {
-      const modeKeys = Object.keys(data.modes);
-      const modeNames = Object.values(data.modes);
-      
-      let filteredVars = activeGroupPath === 'All' 
-        ? data.variables 
-        : data.variables.filter(v => v.name.startsWith(activeGroupPath + '/'));
-
-      // Sort variables based on their first mode's value (descending for numbers, alphabetical for others)
-      filteredVars = filteredVars.sort((a, b) => {
-        const valA = a.valuesByMode[modeKeys[0]];
-        const valB = b.valuesByMode[modeKeys[0]];
-        
-        let resA = valA;
-        let resB = valB;
-
-        // Resolve aliases for sorting
-        if (typeof valA === 'object' && valA?.type === 'VARIABLE_ALIAS') {
-          resA = a.resolvedValuesByMode?.[modeKeys[0]]?.resolvedValue;
-        }
-        if (typeof valB === 'object' && valB?.type === 'VARIABLE_ALIAS') {
-          resB = b.resolvedValuesByMode?.[modeKeys[0]]?.resolvedValue;
-        }
-
-        // Special exception: 'heading_small' should be positioned before 'h1'
-        const nameA = a.name.split('/').pop().toLowerCase();
-        const nameB = b.name.split('/').pop().toLowerCase();
-        
-        if (nameA === 'heading_small' && nameB === 'h1') return -1;
-        if (nameA === 'h1' && nameB === 'heading_small') return 1;
-
-        const numA = parseFloat(resA);
-        const numB = parseFloat(resB);
-
-        if (!isNaN(numA) && !isNaN(numB)) {
-          return numB - numA; // Descending for numbers
-        }
-        
-        // Fallback to alphabetical name sorting if values aren't numbers
-        return a.name.localeCompare(b.name);
-      });
-
-      tokenTotal.textContent = `${filteredVars.length} tokens`;
-
-      let html = `
-        <table>
-          <thead>
-            <tr>
-              <th class="col-name">Name</th>
-              ${modeNames.map(name => `<th class="col-mode">${name === 'Mode 1' ? 'Value' : name}</th>`).join('')}
-              <th class="col-empty"></th>
-            </tr>
-          </thead>
-          <tbody>
-      `;
-
-      const hexagonIcon = '<svg viewBox="0 0 24 24" style="width:14px;height:14px;opacity:0.6;"><path d="M12 2l8.66 5v10L12 22l-8.66-5V7z" fill="none" stroke="currentColor" stroke-width="2.5"></path><circle cx="12" cy="12" r="3" fill="currentColor"></circle></svg>';
-      const unlinkIcon = '<svg viewBox="0 0 24 24" style="width:14px;height:14px;"><path d="M18.84 15.16l1.16-1.16a5 5 0 0 0-7.07-7.07l-1.16 1.16M14 11l-4 4M5.16 8.84L4 10a5 5 0 0 0 7.07 7.07l1.16-1.16M2 2l20 20" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"></path></svg>';
-
-      function getTypeIcon(symbol, size = 20) {
-        return `
-          <div class="type-icon" style="width:${size}px; height:${size}px; position:relative;">
-            <svg viewBox="0 0 24 24" style="width:100%; height:100%; position:absolute; top:0; left:0;">
-              <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="2.5"></rect>
-            </svg>
-            <span style="position:relative; z-index:1; font-size:${size * 0.5}px;">${symbol}</span>
-          </div>
-        `;
-      }
-
-      filteredVars.forEach(v => {
-        const parts = v.name.split('/');
-        const leafName = parts[parts.length - 1];
-        const normalizedLeaf = leafName.toLowerCase().replace(/[-_]/g, ' ');
-        const isFontFamily = normalizedLeaf.includes('font family') || normalizedLeaf === 'family';
-        const isFontWeight = normalizedLeaf.includes('font weight') || normalizedLeaf === 'weight';
-        
-        let typeSymbol = '#';
-        if (v.type === 'COLOR') typeSymbol = '◐';
-        if (v.type === 'STRING') typeSymbol = 'T';
-        if (v.type === 'BOOLEAN') typeSymbol = 'B';
-
-        html += `
-          <tr>
-            <td onclick="focusInput('in-${v.id}')">
-              <div class="cell-content">
-                ${getTypeIcon(typeSymbol)}
-                <input type="text" class="table-input" id="in-${v.id}" value="${leafName}" placeholder="Variable Name" 
-                  onblur="updateVariableName('${v.id}', this.value)" onkeydown="if(event.key==='Enter') this.blur()">
-              </div>
-            </td>
-            ${modeKeys.map(mId => {
-              const val = v.valuesByMode[mId];
-              const resolved = v.resolvedValuesByMode?.[mId];
-              
-              if (val && typeof val === 'object' && val.type === 'VARIABLE_ALIAS') {
-                // Alias UI
-                const aliasName = resolved?.aliasName || 'Unknown Alias';
-                const aliasParts = aliasName.split('/');
-                const displayAlias = aliasParts.length > 1 
-                  ? `...${aliasParts[aliasParts.length-2]}/${aliasParts[aliasParts.length-1]}`
-                  : aliasName;
-
-                return `
-                  <td>
-                    <div class="cell-content">
-                      <div class="alias-pill" title="${aliasName}" onclick="showLinkedVariablesModal('${aliasName}', event)">
-                        ${getTypeIcon(typeSymbol, 12)}
-                        <span class="alias-name">${displayAlias}</span>
-                      </div>
-                      <div class="link-btn" title="Unlink" onclick="unlinkAlias('${v.id}', '${mId}')">
-                        ${unlinkIcon}
-                      </div>
-                    </div>
-                  </td>
-                `;
-              }
-
-              if (v.type === 'COLOR') {
-                const color = val || { r: 0, g: 0, b: 0, a: 1 };
-                const hex = color.r !== undefined ? 
-                  `#${Math.round(color.r * 255).toString(16).padStart(2, '0')}${Math.round(color.g * 255).toString(16).padStart(2, '0')}${Math.round(color.b * 255).toString(16).padStart(2, '0')}`.toUpperCase() : 
-                  (typeof val === 'string' ? val : '#000000');
-                
-                const alpha = color.a !== undefined ? color.a : 1;
-                const opacityPercent = Math.round(alpha * 100);
-
-                if (alpha < 1) {
-                  return `
-                    <td onclick="openColorPicker('${v.id}', '${mId}', event)">
-                      <div class="cell-content">
-                        <div class="color-opacity-row">
-                          <div class="color-swatch-picker" style="background-color: rgba(${color.r*255},${color.g*255},${color.b*255},${alpha})"></div>
-                          <span style="font-weight:500; font-size:11px; color:var(--fg); line-height:1;" class="themed-text">${hex.slice(1)}</span>
-                          <div class="opacity-separator"></div>
-                          <div class="opacity-value" style="user-select: none;">
-                            ${opacityPercent}%
-                          </div>
-                        </div>
-                        <div class="link-btn" title="Link to Variable" onclick="showPicker('${v.id}', '${mId}', event); event.stopPropagation();">
-                          ${hexagonIcon}
-                        </div>
-                      </div>
-                    </td>
-                  `;
-                }
-
-                return `
-                  <td onclick="openColorPicker('${v.id}', '${mId}', event)">
-                    <div class="cell-content">
-                      <div class="color-swatch-picker" style="background-color: ${hex}"></div>
-                      <span class="table-input" style="flex:1;">${hex}</span>
-                      <div class="link-btn" title="Link to Variable" onclick="showPicker('${v.id}', '${mId}', event); event.stopPropagation();">
-                        ${hexagonIcon}
-                      </div>
-                    </div>
-                  </td>
-                `;
-              }
-
-                // Font specific UI
-              if (isFontFamily || isFontWeight) {
-                let displayVal = typeof val === 'object' ? JSON.stringify(val) : (val ?? '');
-                
-                // Helper to get family and weight context
-                let currentFamily = 'sans-serif';
-                let currentWeight = '400';
-                
-                if (isFontFamily) {
-                  currentFamily = typeof val === 'string' ? val : 'sans-serif';
-                } else if (isFontWeight) {
-                  // Try to find sibling font family to pair with this weight
-                  const parts = v.name.split('/');
-                  const parentPath = parts.slice(0, -1).join('/');
-                  const siblingVars = data.variables.filter(sv => sv.name.startsWith(parentPath));
-                  const familyVar = siblingVars.find(sv => {
-                    const leaf = sv.name.split('/').pop().toLowerCase().replace(/[-_]/g, ' ');
-                    return leaf.includes('font family') || leaf === 'family';
-                  });
-                  if (familyVar && familyVar.valuesByMode[mId]) {
-                     const fVal = familyVar.valuesByMode[mId];
-                     currentFamily = typeof fVal === 'string' ? fVal : 'sans-serif';
-                  }
-                  
-                  let rawWeight = val;
-                  if (rawWeight && typeof rawWeight === 'object' && rawWeight.type === 'VARIABLE_ALIAS') {
-                    rawWeight = v.resolvedValuesByMode?.[mId]?.resolvedValue;
-                  }
-                  
-                  const weightName = getFontWeightName(rawWeight || '400');
-                  displayVal = formatFigmaWeight(weightName);
-                  
-                  // Make sure the underlying data reflects the string format if it was previously an integer
-                  if (typeof val === 'number' || (typeof val === 'string' && /^\d+$/.test(val))) {
-                     v.valuesByMode[mId] = displayVal;
-                  }
-                  
-                  const numeric = getFontWeightNum(rawWeight || 400);
-                  currentWeight = String(numeric);
-                }
-                
-                // Pre-load the font to avoid FOUT
-                if (currentFamily !== 'sans-serif') {
-                  loadGoogleFont(currentFamily);
-                }
-
-                return `
-                  <td onclick="showFontPicker('${v.id}', '${mId}', '${isFontFamily ? 'family' : 'weight'}', event)">
-                    <div class="cell-content">
-                      <input type="text" class="table-input font-preview-input" id="val-${v.id}-${mId}" value="${displayVal}" readonly style="cursor: pointer; font-family: '${currentFamily}', sans-serif; font-weight: ${currentWeight};">
-                      <div class="link-btn" title="Link to Variable" onclick="showPicker('${v.id}', '${mId}', event); event.stopPropagation();">
-                        ${hexagonIcon}
-                      </div>
-                    </div>
-                  </td>
-                `;
-              }
-
-              // Default Text/Number input
-              const displayVal = typeof val === 'object' ? JSON.stringify(val) : (val ?? '');
-              const isNumber = v.type === 'FLOAT';
-              return `
-                <td onclick="focusInput('val-${v.id}-${mId}')">
-                  <div class="cell-content">
-                    <input type="text" class="table-input" id="val-${v.id}-${mId}" value="${displayVal}" placeholder="Value"
-                      onblur="updateVariableValue('${v.id}', '${mId}', this.value)" onkeydown="if(event.key==='Enter') this.blur(); ${isNumber ? `if(event.key==='ArrowUp'||event.key==='ArrowDown'){event.preventDefault(); let val=parseFloat(this.value)||0; val+=(event.key==='ArrowUp'?1:-1)*(event.shiftKey?8:1); this.value=val; updateVariableValue('${v.id}','${mId}',val);}` : ''}">
-                    <div class="link-btn" title="Link to Variable" onclick="showPicker('${v.id}', '${mId}', event); event.stopPropagation();">
-                      ${hexagonIcon}
-                    </div>
-                  </div>
-                </td>
-              `;
-            }).join('')}
-            <td class="col-empty" style="width: 1%; white-space: nowrap; padding-right: 8px;">
-              <div class="delete-btn" onclick="deleteVariable('${v.id}')" title="Delete Variable" style="cursor:pointer; opacity:0.5; display:inline-flex; align-items:center; justify-content:center; padding: 4px 8px; border-radius: 4px; font-size: 14px;">✕</div>
-            </td>
-          </tr>
-        `;
-      });
-
-      const existingTypes = new Set(filteredVars.map(v => v.type));
-      const showString = existingTypes.size === 0 || existingTypes.has('STRING');
-      const showColor = existingTypes.size === 0 || existingTypes.has('COLOR');
-      const showFloat = existingTypes.size === 0 || existingTypes.has('FLOAT');
-      const showBoolean = existingTypes.size === 0 || existingTypes.has('BOOLEAN');
-
-      html += `
-          </tbody>
-        </table>
-        <div style="padding: 12px; display: flex; gap: 8px; border-top: 1px solid var(--border);">
-          ${showString ? `<button class="add-var-btn" onclick="addVariable('STRING', activeGroupPath)" style="padding: 6px 12px; font-size: 11px; cursor: pointer; border-radius: 4px; background: var(--bg-hover); border: 1px solid var(--border); color: var(--fg);">+ Add String</button>` : ''}
-          ${showColor ? `<button class="add-var-btn" onclick="addVariable('COLOR', activeGroupPath)" style="padding: 6px 12px; font-size: 11px; cursor: pointer; border-radius: 4px; background: var(--bg-hover); border: 1px solid var(--border); color: var(--fg);">+ Add Color</button>` : ''}
-          ${showFloat ? `<button class="add-var-btn" onclick="addVariable('FLOAT', activeGroupPath)" style="padding: 6px 12px; font-size: 11px; cursor: pointer; border-radius: 4px; background: var(--bg-hover); border: 1px solid var(--border); color: var(--fg);">+ Add Number</button>` : ''}
-          ${showBoolean ? `<button class="add-var-btn" onclick="addVariable('BOOLEAN', activeGroupPath)" style="padding: 6px 12px; font-size: 11px; cursor: pointer; border-radius: 4px; background: var(--bg-hover); border: 1px solid var(--border); color: var(--fg);">+ Add Boolean</button>` : ''}
-        </div>
-      `;
-      tableContainer.innerHTML = html;
+      collectionsTableController.renderTable(data);
     }
 
     window.unlinkAlias = (vId, mId) => {
@@ -964,7 +782,7 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
     }
 
     window.handleCPUnlink = () => {
-      if (cpContext) {
+      if (cpContext && cpContext.vId && cpContext.mId) {
         unlinkAlias(cpContext.vId, cpContext.mId);
         hideColorPicker();
       }
@@ -1048,7 +866,7 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
 
     window.activateEyeDropper = () => {
       if (!window.EyeDropper) {
-        alert('Your browser does not support the EyeDropper API');
+        showToast('Your browser does not support the EyeDropper API', 'error', 2800);
         return;
       }
       const eyeDropper = new EyeDropper();
@@ -1077,9 +895,14 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
 
     function applyCPColor() {
       if (!cpContext) return;
-      const { vId, mId } = cpContext;
       const rgb = hslToRgb(cpColor.h, cpColor.s, cpColor.l);
       const val = { r: rgb.r/255, g: rgb.g/255, b: rgb.b/255, a: cpColor.a };
+      if (cpContext.type === 'local-grid') {
+        localStylesController.setGridRowColor(cpContext.rowKey, rgbToHex(rgb.r, rgb.g, rgb.b), Math.round(cpColor.a * 100));
+        localStylesController.render(getLocalStylesSource());
+        return;
+      }
+      const { vId, mId } = cpContext;
       
       const updateData = (data) => {
         const v = data.variables.find(item => item.id === vId);
@@ -1201,453 +1024,121 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
     const localStylesView = document.getElementById('local-styles-view');
     
     let activeViewMode = 'collections';
-    let activeLSNav = 'grid';
-    const localStyleDraft = {
-      grid: [
-        { key: 'expanded', name: 'Grid/Expanded', count: '12', color: '#0080FF', opacity: '10', type: 'Stretch', width: 'Auto', margin: '156', gutter: '32' },
-        { key: 'compact', name: 'Grid/Compact', count: '12', color: '#0080FF', opacity: '10', type: 'Stretch', width: 'Auto', margin: '56', gutter: '32' },
-        { key: 'mobile', name: 'Grid/Mobile', count: '4', color: '#0080FF', opacity: '10', type: 'Stretch', width: 'Auto', margin: '16', gutter: '16' }
-      ],
-      heading: {},
-      body: {}
+    let localStylesSyncTimer = null;
+    let localStylesSyncPending = false;
+    let lastLocalStylesSyncAt = 0;
+    const requestLocalStylesSync = (force = false) => {
+      if (activeViewMode !== 'local-styles') return;
+      if (localStylesSyncPending) return;
+      const now = Date.now();
+      if (!force && now - lastLocalStylesSyncAt < 900) return;
+      localStylesSyncPending = true;
+      lastLocalStylesSyncAt = now;
+      parent.postMessage({ pluginMessage: { type: 'check-collections' } }, '*');
     };
-    const localStyleUnits = {
-      heading: { lineHeightPercent: true, lineSpacingPercent: true },
-      body: { lineHeightPercent: true, lineSpacingPercent: true }
+    const startLocalStylesLiveSync = () => {
+      if (localStylesSyncTimer !== null) return;
+      requestLocalStylesSync(true);
+      localStylesSyncTimer = setInterval(() => {
+        requestLocalStylesSync(false);
+      }, 1400);
     };
-
+    const stopLocalStylesLiveSync = () => {
+      if (localStylesSyncTimer !== null) {
+        clearInterval(localStylesSyncTimer);
+        localStylesSyncTimer = null;
+      }
+      localStylesSyncPending = false;
+    };
+    const openLocalOptionPicker = ({ section, rowKey, field, options, sample, currentValue, fontFamily, anchorEl }) => {
+      const rect = anchorEl.getBoundingClientRect();
+      currentPickerContext = {
+        type: 'ls-options',
+        section,
+        rowKey,
+        field,
+        options,
+        sample,
+        currentValue,
+        fontFamily
+      };
+      document.getElementById('picker-title').textContent = field === 'fontWeight' ? 'Font Weight' : 'Case';
+      pickerSearchInput.value = '';
+      pickerSearchInput.disabled = false;
+      pickerSearchInput.placeholder = 'Search';
+      pickerOverlay.style.display = 'block';
+      pickerSearchInput.focus();
+      const picker = document.getElementById('variable-picker');
+      picker.classList.add('ls-options-picker');
+      picker.classList.remove('linked-variables-picker');
+      picker.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - 330)}px`;
+      picker.style.left = `${Math.min(rect.left, window.innerWidth - 330)}px`;
+      window.renderLocalOptionList('');
+    };
+    const localStylesController = createLocalStylesController({ openLocalOptionPicker });
+    const collectionsTableController = createCollectionsTableController({
+      tableContainer,
+      tokenTotal,
+      getActiveGroupPath: () => activeGroupPath,
+      getFontWeightName,
+      formatFigmaWeight,
+      getFontWeightNum,
+      loadGoogleFont
+    });
     window.switchLSNav = (navId) => {
-      activeLSNav = navId;
-      document.querySelectorAll('#local-styles-view .collection-item').forEach(el => el.classList.remove('active'));
-      document.getElementById(`ls-nav-${navId}`).classList.add('active');
-      
-      const titleMap = { grid: 'Grid System', heading: 'Heading Text', body: 'Text' };
-      document.getElementById('ls-view-title').textContent = titleMap[navId];
-      
-      renderLocalStylesView();
+      localStylesController.switchNav(navId);
+      requestLocalStylesSync(true);
+      localStylesController.render(getLocalStylesSource());
     };
 
     tabCollections.onclick = () => {
       activeViewMode = 'collections';
-      tabCollections.style.background = 'var(--accent)';
-      tabCollections.style.color = '#fff';
-      tabCollections.style.opacity = '1';
-      tabLocalStyles.style.background = 'transparent';
-      tabLocalStyles.style.color = 'var(--fg)';
-      tabLocalStyles.style.opacity = '0.7';
+      stopLocalStylesLiveSync();
+      tabCollections.classList.add('active');
+      tabLocalStyles.classList.remove('active');
       collectionsView.style.display = 'flex';
       localStylesView.style.display = 'none';
     };
 
     tabLocalStyles.onclick = () => {
       activeViewMode = 'local-styles';
-      tabLocalStyles.style.background = 'var(--accent)';
-      tabLocalStyles.style.color = '#fff';
-      tabLocalStyles.style.opacity = '1';
-      tabCollections.style.background = 'transparent';
-      tabCollections.style.color = 'var(--fg)';
-      tabCollections.style.opacity = '0.7';
+      startLocalStylesLiveSync();
+      tabLocalStyles.classList.add('active');
+      tabCollections.classList.remove('active');
       collectionsView.style.display = 'none';
       localStylesView.style.display = 'flex';
-      renderLocalStylesView();
+      requestLocalStylesSync(true);
+      localStylesController.render(getLocalStylesSource());
+    };
+    window.openLocalGridColorPicker = (rowKey, event) => {
+      if (event) event.stopPropagation();
+      const row = localStylesController.getGridRow(rowKey);
+      if (!row) return;
+      saveToHistory();
+      cpContext = { type: 'local-grid', rowKey };
+      const hexInput = String(row.color || '#0080FF').replace('#', '').trim();
+      const normalizedHex = hexInput.length === 3 ? hexInput.split('').map(ch => `${ch}${ch}`).join('') : hexInput;
+      const safeHex = /^[0-9a-fA-F]{6}$/.test(normalizedHex) ? normalizedHex : '0080FF';
+      const r = parseInt(safeHex.slice(0, 2), 16) / 255;
+      const g = parseInt(safeHex.slice(2, 4), 16) / 255;
+      const b = parseInt(safeHex.slice(4, 6), 16) / 255;
+      const opacity = parseFloat(String(row.opacity ?? '').replace(/[^0-9.-]/g, ''));
+      const normalizedOpacity = Number.isFinite(opacity) ? opacity : 100;
+      const a = Math.max(0, Math.min(1, normalizedOpacity / 100));
+      cpColor = rgbToHsl(r, g, b, a);
+      const rect = event.currentTarget.getBoundingClientRect();
+      cpModal.style.display = 'flex';
+      cpModal.style.top = `${Math.min(rect.bottom + 5, window.innerHeight - 350)}px`;
+      cpModal.style.left = `${Math.min(rect.left, window.innerWidth - 260)}px`;
+      updateCPUI();
+    };
+    window.toggleLocalUnit = (section, field, event) => {
+      if (event) event.stopPropagation();
+      localStylesController.toggleUnit(section, field);
+      localStylesController.render(getLocalStylesSource());
     };
 
-    function renderLocalStylesView() {
-      const content = document.getElementById('local-styles-content');
-      const importBtn = document.getElementById('ls-import-btn');
-      const escapeHtml = (value) => String(value ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-      const toNumber = (value, fallback = 0) => {
-        const parsed = parseFloat(String(value ?? '').replace(/[^0-9.-]/g, ''));
-        return Number.isFinite(parsed) ? parsed : fallback;
-      };
-      const setImportButton = (label, isDisabled, onClick) => {
-        importBtn.textContent = label;
-        importBtn.disabled = isDisabled;
-        importBtn.onclick = isDisabled ? null : onClick;
-      };
-      
-      if (!modesData || !modesData.variables || modesData.variables.length === 0) {
-        content.innerHTML = `
-          <div style="padding: 60px 24px; text-align: center; color: var(--muted);">
-            <svg viewBox="0 0 24 24" style="width: 32px; height: 32px; margin-bottom: 12px; opacity: 0.2; display: inline-block;"><path d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-            <div style="margin-bottom: 16px;">Load library first to view available styles</div>
-            <button class="btn-primary" onclick="document.getElementById('action-btn').click()" style="padding: 6px 12px;">Load Library</button>
-          </div>
-        `;
-        setImportButton('Import to Figma', true, null);
-        return;
-      }
-
-      const allVariables = [
-        ...(modesData?.variables || []),
-        ...(primitivesData?.variables || [])
-      ];
-
-      const getResolvedVal = (v) => {
-        if (!v) return '';
-        const val = v.valuesByMode[Object.keys(v.valuesByMode)[0]];
-        if (typeof val === 'object' && val.type === 'VARIABLE_ALIAS') {
-          const target = allVariables.find(t => t.id === val.id);
-          return target ? target.valuesByMode[Object.keys(target.valuesByMode)[0]] : val.id;
-        }
-        return val;
-      };
-      const getResolvedByPath = (path) => {
-        const variable = allVariables.find(v => v.name.toLowerCase() === path.toLowerCase());
-        return variable ? getResolvedVal(variable) : '';
-      };
-      const fontFamilyDefault = String(
-        getResolvedByPath('Typography/Font Family/font-family') ||
-        getResolvedByPath('Typography/Font Family/sans') ||
-        'Inter'
-      );
-      const fontPathDefault = allVariables.find(v => v.name.toLowerCase() === 'typography/font family/font-family')
-        ?.name || allVariables.find(v => v.name.toLowerCase().includes('typography/font family'))
-          ?.name || 'Typography/Font Family/font-family';
-      const primitiveFontWeightOptions = (primitivesData?.variables || [])
-        .filter(v => v.name.startsWith('Typography/Font Weight/'))
-        .map(v => String(getResolvedVal(v) || v.name.split('/').pop() || '').trim())
-        .filter(Boolean);
-      const textCaseOptions = ['Original', 'Upper', 'Lower', 'Title', 'Small Caps'];
-      const formatUnitValue = (value, isPercent) => {
-        const normalized = String(value ?? '').replace('%', '').trim();
-        if (!normalized) return '';
-        return isPercent ? `${normalized}%` : normalized;
-      };
-
-      const isHeadingToken = (name) => name.startsWith('Typography/Heading/');
-      const isTextToken = (name) => name.startsWith('Typography/Text/') || name.startsWith('Typography/Body/');
-      const headings = modesData.variables.filter(v => isHeadingToken(v.name));
-      const bodyTexts = modesData.variables.filter(v => isTextToken(v.name));
-
-      // Update sidebar counts
-      document.getElementById('ls-count-heading').textContent = headings.length;
-      document.getElementById('ls-count-body').textContent = bodyTexts.length;
-
-      // Ensure sort logic for typography variables (highest number down to lowest based on first mode value)
-      const sortTypography = (arr) => {
-        return arr.sort((a, b) => {
-          // Special exception: 'heading_small' should be positioned before 'h1'
-          const nameA = a.name.split('/').pop().toLowerCase();
-          const nameB = b.name.split('/').pop().toLowerCase();
-          
-          if (nameA === 'heading_small' && nameB === 'h1') return -1;
-          if (nameA === 'h1' && nameB === 'heading_small') return 1;
-
-          const valA = parseFloat(getResolvedVal(a)) || 0;
-          const valB = parseFloat(getResolvedVal(b)) || 0;
-          return valB - valA; // Descending
-        });
-      };
-
-      const sortedHeadings = sortTypography(headings);
-      const sortedBodyTexts = sortTypography(bodyTexts);
-
-      const headingLineHeightMap = {
-        heading_3xlarge: 100,
-        heading_2xlarge: 100,
-        heading_xlarge: 100,
-        heading_large: 110,
-        heading_medium: 110,
-        heading_small: 120,
-        h1: 120,
-        h2: 120,
-        h3: 120,
-        h4: 130,
-        h5: 140,
-        h6: 140
-      };
-
-      const getTypographyRow = (section, variable) => {
-        const rowKey = variable.id;
-        if (!localStyleDraft[section][rowKey]) {
-          const tokenName = variable.name.split('/').pop();
-          localStyleDraft[section][rowKey] = {
-            key: rowKey,
-            name: tokenName,
-            path: variable.name,
-            fontPath: fontPathDefault,
-            font: fontFamilyDefault,
-            fontWeight: section === 'heading' ? 'Semi Bold' : 'Regular',
-            size: String(getResolvedVal(variable) ?? ''),
-            lineHeight: String(section === 'heading' ? (headingLineHeightMap[tokenName.toLowerCase()] || 120) : 140),
-            lineSpacing: '0',
-            lineHeightIsPercent: localStyleUnits[section].lineHeightPercent,
-            lineSpacingIsPercent: localStyleUnits[section].lineSpacingPercent,
-            case: 'Original'
-          };
-        } else {
-          localStyleDraft[section][rowKey].font = fontFamilyDefault;
-          localStyleDraft[section][rowKey].size = String(getResolvedVal(variable) ?? '');
-          localStyleDraft[section][rowKey].lineHeightIsPercent = localStyleUnits[section].lineHeightPercent;
-          localStyleDraft[section][rowKey].lineSpacingIsPercent = localStyleUnits[section].lineSpacingPercent;
-        }
-        return localStyleDraft[section][rowKey];
-      };
-
-      const createEditableCell = (section, rowKey, field, value, options = null, sample = 'Sample Text') => {
-        const hasOptions = Array.isArray(options) && options.length > 0;
-        const optionsAttr = hasOptions ? ` data-ls-options='${escapeHtml(JSON.stringify(options))}' data-ls-sample='${escapeHtml(sample)}'` : '';
-        const editableMode = hasOptions ? 'false' : 'true';
-        const extraClass = hasOptions ? ' ls-select-cell' : '';
-        return `
-          <td><div class="cell-content"><span class="table-input${extraClass}" contenteditable="${editableMode}" data-ls-section="${section}" data-ls-row="${rowKey}" data-ls-field="${field}"${optionsAttr}>${escapeHtml(value)}</span></div></td>
-        `;
-      };
-      const createReadonlyCell = (value) => `
-        <td><div class="cell-content"><span class="table-input">${escapeHtml(value)}</span></div></td>
-      `;
-      const createLinkedTokenCell = (path, label = path) => `
-        <td class="ls-token-cell">
-          <div class="cell-content">
-            <div class="alias-pill" title="${escapeHtml(path)}" onclick="showLinkedVariablesModal('${escapeHtml(path)}', event)">
-              <span class="type-icon">
-                <svg viewBox="0 0 24 24" style="width: 12px; height: 12px; opacity: 0.75;">
-                  <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="2"></rect>
-                  <text x="12" y="16" text-anchor="middle" font-size="10" fill="currentColor" font-family="Inter, sans-serif">#</text>
-                </svg>
-              </span>
-              <span class="alias-name">${escapeHtml(label)}</span>
-            </div>
-            <span class="link-btn" title="Connected" onclick="showLinkedVariablesModal('${escapeHtml(path)}', event)">
-              <svg viewBox="0 0 24 24" style="width:14px;height:14px;"><path d="M18.84 15.16l1.16-1.16a5 5 0 0 0-7.07-7.07l-1.16 1.16M14 11l-4 4M5.16 8.84L4 10a5 5 0 0 0 7.07 7.07l1.16-1.16M2 2l20 20" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"></path></svg>
-            </span>
-          </div>
-        </td>
-      `;
-
-      const createGridRow = (row) => `
-        <tr>
-          ${createReadonlyCell(row.name)}
-          ${createEditableCell('grid', row.key, 'count', row.count)}
-          ${createEditableCell('grid', row.key, 'color', row.color)}
-          ${createEditableCell('grid', row.key, 'opacity', row.opacity)}
-          ${createEditableCell('grid', row.key, 'type', row.type)}
-          ${createEditableCell('grid', row.key, 'width', row.width)}
-          ${createEditableCell('grid', row.key, 'margin', row.margin)}
-          ${createEditableCell('grid', row.key, 'gutter', row.gutter)}
-        </tr>
-      `;
-      const createTypographyRowHtml = (section, row) => `
-        <tr>
-          ${createReadonlyCell(row.name)}
-          ${createLinkedTokenCell(row.path)}
-          ${createLinkedTokenCell(row.fontPath, row.font)}
-          ${createEditableCell(section, row.key, 'fontWeight', row.fontWeight, primitiveFontWeightOptions, 'Ag')}
-          ${createLinkedTokenCell(row.path, row.size)}
-          ${createEditableCell(section, row.key, 'lineHeight', formatUnitValue(row.lineHeight, row.lineHeightIsPercent))}
-          ${createEditableCell(section, row.key, 'lineSpacing', formatUnitValue(row.lineSpacing, row.lineSpacingIsPercent))}
-          ${createEditableCell(section, row.key, 'case', row.case, textCaseOptions, 'Sample Text')}
-        </tr>
-      `;
-      const bindEditors = () => {
-        const persistValue = (editableEl, overrideValue = null) => {
-          const section = editableEl.dataset.lsSection;
-          const rowKey = editableEl.dataset.lsRow;
-          const field = editableEl.dataset.lsField;
-          const value = (overrideValue ?? editableEl.textContent).trim();
-          const normalizedValue = (field === 'lineHeight' || field === 'lineSpacing') ? value.replace('%', '').trim() : value;
-          if (!section || !rowKey || !field) return;
-          if (section === 'grid') {
-            const targetRow = localStyleDraft.grid.find(row => row.key === rowKey);
-            if (!targetRow) return;
-            targetRow[field] = normalizedValue;
-            return;
-          }
-          if (!localStyleDraft[section][rowKey]) return;
-          localStyleDraft[section][rowKey][field] = normalizedValue;
-        };
-        const openLocalOptionPicker = (editableEl, options) => {
-          const section = editableEl.dataset.lsSection;
-          const rowKey = editableEl.dataset.lsRow;
-          const field = editableEl.dataset.lsField;
-          const sample = editableEl.dataset.lsSample || 'Sample Text';
-          if (!section || !rowKey || !field) return;
-          const row = localStyleDraft[section]?.[rowKey];
-          if (!row) return;
-          const rect = editableEl.getBoundingClientRect();
-          currentPickerContext = {
-            type: 'ls-options',
-            section,
-            rowKey,
-            field,
-            options,
-            sample,
-            currentValue: String(row[field] ?? ''),
-            fontFamily: row.font || 'Inter'
-          };
-          document.getElementById('picker-title').textContent = field === 'fontWeight' ? 'Font Weight' : 'Case';
-          pickerSearchInput.value = '';
-          pickerSearchInput.disabled = false;
-          pickerSearchInput.placeholder = 'Search';
-          pickerOverlay.style.display = 'block';
-          pickerSearchInput.focus();
-          const picker = document.getElementById('variable-picker');
-          picker.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - 330)}px`;
-          picker.style.left = `${Math.min(rect.left, window.innerWidth - 250)}px`;
-          window.renderLocalOptionList('');
-        };
-        content.querySelectorAll('[data-ls-field]').forEach((editableEl) => {
-          const options = editableEl.dataset.lsOptions ? JSON.parse(editableEl.dataset.lsOptions) : null;
-          if (Array.isArray(options) && options.length > 0) {
-            editableEl.addEventListener('click', () => {
-              openLocalOptionPicker(editableEl, options);
-            });
-            return;
-          }
-          editableEl.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter') {
-              event.preventDefault();
-              editableEl.blur();
-            }
-          });
-          editableEl.addEventListener('blur', () => {
-            persistValue(editableEl);
-          });
-        });
-      };
-
-      let tableHtml = '';
-
-      if (activeLSNav === 'grid') {
-        const theadHtml = `
-          <thead>
-            <tr>
-              <th class="col-lg">Name</th>
-              <th class="col-xs">Count</th>
-              <th class="col-sm">Color</th>
-              <th class="col-xs">Opacity</th>
-              <th class="col-sm">Type</th>
-              <th class="col-xs">Width</th>
-              <th class="col-xs">Margin</th>
-              <th class="col-xs">Gutter</th>
-            </tr>
-          </thead>
-        `;
-        tableHtml = `
-          <table>
-            ${theadHtml}
-            <tbody>
-              ${localStyleDraft.grid.map(row => createGridRow(row)).join('')}
-            </tbody>
-          </table>
-        `;
-        setImportButton('Import Grid Styles', localStyleDraft.grid.length === 0, () => {
-          const rows = localStyleDraft.grid.map(row => ({
-            name: row.name,
-            count: Math.max(1, Math.round(toNumber(row.count, 12))),
-            color: row.color || '#0080FF',
-            opacity: Math.min(100, Math.max(0, toNumber(row.opacity, 10))),
-            type: row.type || 'Stretch',
-            width: row.width || 'Auto',
-            margin: Math.max(0, toNumber(row.margin, 0)),
-            gutter: Math.max(0, toNumber(row.gutter, 0))
-          }));
-          parent.postMessage({ pluginMessage: { type: 'create-grid-style', data: { rows } } }, '*');
-        });
-      } else if (activeLSNav === 'heading') {
-        const theadHtml = `
-          <thead>
-            <tr>
-              <th class="col-md">Name</th>
-              <th class="col-lg">Linked Token</th>
-              <th class="col-md">Font</th>
-              <th class="col-sm">Font Weight</th>
-              <th class="col-sm">Size</th>
-              <th class="col-md"><div class="ls-header-split"><span>Line Height</span><button class="ls-unit-btn ${localStyleUnits.heading.lineHeightPercent ? 'active' : ''}" onclick="toggleLocalUnit('heading','lineHeight',event)">%</button></div></th>
-              <th class="col-md"><div class="ls-header-split"><span>Line Spacing</span><button class="ls-unit-btn ${localStyleUnits.heading.lineSpacingPercent ? 'active' : ''}" onclick="toggleLocalUnit('heading','lineSpacing',event)">%</button></div></th>
-              <th class="col-xs">Case</th>
-            </tr>
-          </thead>
-        `;
-        if (headings.length > 0) {
-          const rows = sortedHeadings.map(h => getTypographyRow('heading', h));
-          tableHtml = `
-            <table>
-              ${theadHtml}
-              <tbody>
-                ${rows.map(row => createTypographyRowHtml('heading', row)).join('')}
-              </tbody>
-            </table>
-          `;
-          setImportButton('Import Heading Styles', rows.length === 0, () => {
-            const payloadRows = rows.map(row => ({
-              ...row,
-              lineHeightUnit: row.lineHeightIsPercent ? 'PERCENT' : 'PIXELS',
-              lineSpacingUnit: row.lineSpacingIsPercent ? 'PERCENT' : 'PIXELS'
-            }));
-            parent.postMessage({ pluginMessage: { type: 'create-text-styles', data: { section: 'heading', rows: payloadRows } } }, '*');
-          });
-        } else {
-          tableHtml = `
-            <div style="padding: 60px 24px; text-align: center; color: var(--muted);">
-              <div style="margin-bottom: 16px;">No heading variables detected.</div>
-            </div>
-          `;
-          setImportButton('Import Heading Styles', true, null);
-        }
-      } else if (activeLSNav === 'body') {
-        const theadHtml = `
-          <thead>
-            <tr>
-              <th class="col-md">Name</th>
-              <th class="col-lg">Linked Token</th>
-              <th class="col-md">Font</th>
-              <th class="col-sm">Font Weight</th>
-              <th class="col-sm">Size</th>
-              <th class="col-md"><div class="ls-header-split"><span>Line Height</span><button class="ls-unit-btn ${localStyleUnits.body.lineHeightPercent ? 'active' : ''}" onclick="toggleLocalUnit('body','lineHeight',event)">%</button></div></th>
-              <th class="col-md"><div class="ls-header-split"><span>Line Spacing</span><button class="ls-unit-btn ${localStyleUnits.body.lineSpacingPercent ? 'active' : ''}" onclick="toggleLocalUnit('body','lineSpacing',event)">%</button></div></th>
-              <th class="col-xs">Case</th>
-            </tr>
-          </thead>
-        `;
-        if (bodyTexts.length > 0) {
-          const rows = sortedBodyTexts.map(b => getTypographyRow('body', b));
-          tableHtml = `
-            <table>
-              ${theadHtml}
-              <tbody>
-                ${rows.map(row => createTypographyRowHtml('body', row)).join('')}
-              </tbody>
-            </table>
-          `;
-          setImportButton('Import Text Styles', rows.length === 0, () => {
-            const payloadRows = rows.map(row => ({
-              ...row,
-              lineHeightUnit: row.lineHeightIsPercent ? 'PERCENT' : 'PIXELS',
-              lineSpacingUnit: row.lineSpacingIsPercent ? 'PERCENT' : 'PIXELS'
-            }));
-            parent.postMessage({ pluginMessage: { type: 'create-text-styles', data: { section: 'body', rows: payloadRows } } }, '*');
-          });
-        } else {
-          tableHtml = `
-            <div style="padding: 60px 24px; text-align: center; color: var(--muted);">
-              <div style="margin-bottom: 16px;">No body variables detected.</div>
-            </div>
-          `;
-          setImportButton('Import Text Styles', true, null);
-        }
-      }
-
-      content.innerHTML = tableHtml;
-      bindEditors();
-      window.toggleLocalUnit = (section, field, event) => {
-        if (event) event.stopPropagation();
-        const unitKey = field === 'lineHeight' ? 'lineHeightPercent' : 'lineSpacingPercent';
-        localStyleUnits[section][unitKey] = !localStyleUnits[section][unitKey];
-        Object.values(localStyleDraft[section]).forEach((row) => {
-          row[field === 'lineHeight' ? 'lineHeightIsPercent' : 'lineSpacingIsPercent'] = localStyleUnits[section][unitKey];
-        });
-        renderLocalStylesView();
-      };
-    }
-
-    // Remove old listeners since they are dynamically bound in renderLocalStylesView now
+    // Remove old listeners since they are dynamically bound in localStylesController.render now
     const fontLoader = {
       loaded: new Set(),
       queue: new Map(),
@@ -1795,6 +1286,8 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
       pickerOverlay.style.display = 'block';
       const picker = document.getElementById('variable-picker');
       picker.style.display = 'flex';
+      picker.classList.remove('ls-options-picker');
+      picker.classList.remove('linked-variables-picker');
       
       // Update UI for font picker - always show "Google Fonts"
       document.getElementById('picker-title').textContent = 'Google Fonts';
@@ -2091,9 +1584,11 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
       // Position the picker near the clicked element
       const rect = event.currentTarget.getBoundingClientRect();
       const picker = document.getElementById('variable-picker');
+      picker.classList.remove('ls-options-picker');
+      picker.classList.add('linked-variables-picker');
       
-      picker.style.top = `${Math.min(rect.bottom + 5, window.innerHeight - 330)}px`;
-      picker.style.left = `${Math.min(rect.left, window.innerWidth - 250)}px`;
+      picker.style.top = `${Math.min(rect.bottom + 5, window.innerHeight - 430)}px`;
+      picker.style.left = `${Math.min(rect.left, window.innerWidth - 420)}px`;
       
       pickerOverlay.style.display = 'block';
       pickerSearchInput.value = '';
@@ -2111,6 +1606,9 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
       pickerSearchInput.disabled = false;
       pickerSearchInput.placeholder = 'Search';
       document.getElementById('picker-title').textContent = 'Google Fonts';
+      const picker = document.getElementById('variable-picker');
+      picker.classList.remove('ls-options-picker');
+      picker.classList.remove('linked-variables-picker');
     };
 
     function updatePickerActive() {
@@ -2184,6 +1682,34 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
       return JSON.stringify(resolved);
     }
 
+    function formatVariableValueLabel(variable) {
+      const resolved = resolveVariableValue(variable);
+      if (resolved === null || resolved === undefined || resolved === '') return '—';
+      if (typeof resolved === 'boolean') return resolved ? 'True' : 'False';
+      if (typeof resolved === 'number') return String(Math.round(resolved * 100) / 100);
+      if (typeof resolved === 'string') return resolved;
+      if (variable?.type === 'COLOR' && typeof resolved === 'object') {
+        const r = Math.round((resolved.r || 0) * 255);
+        const g = Math.round((resolved.g || 0) * 255);
+        const b = Math.round((resolved.b || 0) * 255);
+        const a = Number.isFinite(resolved.a) ? Math.round(resolved.a * 100) : 100;
+        const hex = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`.toUpperCase();
+        return a < 100 ? `${hex} ${a}%` : hex;
+      }
+      return JSON.stringify(resolved);
+    }
+
+    function getVariableColorSwatch(variable) {
+      if (!variable || variable.type !== 'COLOR') return null;
+      const resolved = resolveVariableValue(variable);
+      if (!resolved || typeof resolved !== 'object') return null;
+      const r = Math.round((resolved.r || 0) * 255);
+      const g = Math.round((resolved.g || 0) * 255);
+      const b = Math.round((resolved.b || 0) * 255);
+      const a = Number.isFinite(resolved.a) ? Math.max(0, Math.min(1, resolved.a)) : 1;
+      return `rgba(${r}, ${g}, ${b}, ${a})`;
+    }
+
     window.renderLinkedPreviewList = (query) => {
       if (!currentPickerContext || currentPickerContext.type !== 'linked-preview') return;
       const search = String(query || '').toLowerCase();
@@ -2212,13 +1738,33 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
             <text x="12" y="16" text-anchor="middle" font-size="12" fill="currentColor" font-family="Inter, sans-serif">#</text>
           </svg>
         `;
-        const valueLabel = v.type === 'FLOAT' ? getPickerValue(v) : '';
+        const valueLabel = formatVariableValueLabel(v);
+        const swatchColor = getVariableColorSwatch(v);
         opt.innerHTML = `
           <span class="type-icon">${typeIcon}</span>
-          <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapePickerHtml(v.name.split('/').pop() || v.name)}</span>
-          ${valueLabel ? `<span class="linked-row-value">${escapePickerHtml(valueLabel)}</span>` : ''}
+          <span class="linked-row-meta">
+            <span class="linked-row-name">${escapePickerHtml(v.name.split('/').pop() || v.name)}</span>
+            <span class="linked-row-path">${escapePickerHtml(v.name)}</span>
+          </span>
+          ${swatchColor ? `<span class="linked-row-swatch" style="background:${escapePickerHtml(swatchColor)};"></span>` : ''}
+          <span class="linked-row-value">${escapePickerHtml(valueLabel)}</span>
         `;
         opt.onclick = () => {
+          const section = String(currentPickerContext.lsSection || '');
+          const rowKey = String(currentPickerContext.lsRowKey || '');
+          const field = String(currentPickerContext.lsField || '');
+          if (section && rowKey && field) {
+            localStylesController.applyLinkedVariableSelection(
+              section,
+              rowKey,
+              field,
+              v.name,
+              resolveVariableValue(v)
+            );
+            hidePicker();
+            localStylesController.render(getLocalStylesSource());
+            return;
+          }
           currentPickerContext.linkedPath = v.name;
           window.renderLinkedPreviewList(pickerSearchInput.value);
         };
@@ -2257,20 +1803,19 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
           const normalized = String(option).toLowerCase().replace(/\s+/g, '');
           const map = { light: 300, regular: 400, medium: 500, semibold: 600, bold: 700, extrabold: 800 };
           const weight = map[normalized] || 400;
-          sampleStyle = `font-family:${currentPickerContext.fontFamily || 'Inter'};font-weight:${weight};`;
+          const isItalic = normalized.includes('italic');
+          sampleStyle = `font-family:${currentPickerContext.fontFamily || 'Inter'};font-weight:${weight};font-style:${isItalic ? 'italic' : 'normal'};`;
         }
         opt.innerHTML = `
-          <span class="type-icon">•</span>
-          <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapePickerHtml(option)}</span>
-          <span class="linked-row-value" style="${sampleStyle}">${escapePickerHtml(sampleText)}</span>
+          <span class="picker-option-label">${escapePickerHtml(option)}</span>
+          <span class="picker-option-separator"></span>
+          <span class="linked-row-value picker-option-sample" style="${sampleStyle}">${escapePickerHtml(sampleText)}</span>
         `;
         opt.onclick = () => {
           const { section, rowKey, field } = currentPickerContext;
-          if (localStyleDraft?.[section]?.[rowKey]) {
-            localStyleDraft[section][rowKey][field] = String(option);
-          }
+          localStylesController.applyOptionSelection(section, rowKey, field, option);
           hidePicker();
-          renderLocalStylesView();
+          localStylesController.render(getLocalStylesSource());
         };
         pickerList.appendChild(opt);
       });
@@ -2279,7 +1824,7 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
       updatePickerActive();
     };
 
-    window.showLinkedVariablesModal = (path, event) => {
+    window.showLinkedVariablesModal = (path, event, section = '', rowKey = '', field = '') => {
       if (event) event.stopPropagation();
       const rect = event?.currentTarget?.getBoundingClientRect();
       const normalizedPath = String(path || '').trim();
@@ -2291,7 +1836,10 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
         type: 'linked-preview',
         linkedPath: normalizedPath,
         linkedCandidates: related.length > 0 ? related : all.filter(v => v.name.toLowerCase() === normalizedPath.toLowerCase()),
-        baseLabel
+        baseLabel,
+        lsSection: section,
+        lsRowKey: rowKey,
+        lsField: field
       };
       document.getElementById('picker-title').textContent = 'Linked Variables';
       pickerSearchInput.value = '';
@@ -2300,8 +1848,10 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
       pickerOverlay.style.display = 'block';
       pickerSearchInput.focus();
       const picker = document.getElementById('variable-picker');
-      picker.style.top = `${Math.min((rect?.bottom || 80) + 6, window.innerHeight - 330)}px`;
-      picker.style.left = `${Math.min(rect?.left || 24, window.innerWidth - 250)}px`;
+      picker.classList.remove('ls-options-picker');
+      picker.classList.add('linked-variables-picker');
+      picker.style.top = `${Math.min((rect?.bottom || 80) + 6, window.innerHeight - 430)}px`;
+      picker.style.left = `${Math.min(rect?.left || 24, window.innerWidth - 420)}px`;
       window.renderLinkedPreviewList('');
     };
 
@@ -2324,19 +1874,6 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
       const { vId, currentAliasId } = currentPickerContext;
       const targetVar = modesData.variables.find(v => v.id === vId) || primitivesData.variables.find(v => v.id === vId);
       if (!targetVar) return;
-      const getPickerValue = (variable) => {
-        const raw = variable.valuesByMode[Object.keys(variable.valuesByMode)[0]];
-        if (typeof raw === 'number') return String(Math.round(raw * 100) / 100);
-        if (typeof raw === 'string') return raw;
-        if (raw && typeof raw === 'object' && raw.type === 'VARIABLE_ALIAS') {
-          const source = modesData.variables.find(sv => sv.id === raw.id) || primitivesData.variables.find(sv => sv.id === raw.id);
-          if (!source) return '';
-          const sourceRaw = source.valuesByMode[Object.keys(source.valuesByMode)[0]];
-          return typeof sourceRaw === 'number' ? String(Math.round(sourceRaw * 100) / 100) : String(sourceRaw ?? '');
-        }
-        return '';
-      };
-
       // Group variables by collection for the picker
       const collections = [
         { name: 'Primitives', vars: primitivesData.variables },
@@ -2370,12 +1907,17 @@ import { GOOGLE_FONTS } from "./google-fonts.js";
                 <text x="12" y="16" text-anchor="middle" font-size="12" fill="currentColor" font-family="Inter, sans-serif">#</text>
               </svg>
             `;
-            const valueLabel = v.type === 'FLOAT' ? getPickerValue(v) : '';
+            const valueLabel = formatVariableValueLabel(v);
+            const swatchColor = getVariableColorSwatch(v);
 
             opt.innerHTML = `
               <span class="type-icon">${typeIcon}</span>
-              <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${v.name.split('/').pop() || v.name}</span>
-              ${valueLabel ? `<span class="linked-row-value">${valueLabel}</span>` : ''}
+              <span class="linked-row-meta">
+                <span class="linked-row-name">${escapePickerHtml(v.name.split('/').pop() || v.name)}</span>
+                <span class="linked-row-path">${escapePickerHtml(v.name)}</span>
+              </span>
+              ${swatchColor ? `<span class="linked-row-swatch" style="background:${escapePickerHtml(swatchColor)};"></span>` : ''}
+              <span class="linked-row-value">${escapePickerHtml(valueLabel)}</span>
             `;
             opt.onclick = () => selectPickerVariable(v.id, v.name);
             pickerList.appendChild(opt);

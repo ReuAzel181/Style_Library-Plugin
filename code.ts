@@ -6,9 +6,107 @@ const PRIMITIVES_DATA = `{"id":"VariableCollectionId:3286:3508","name":"Primitiv
 
 // Show the UI with increased height (10% taller)
 figma.showUI(__html__, { width: 986, height: 640, themeColors: true });
+figma.loadAllPagesAsync().catch(() => {});
 
 // Map to track variable IDs across collections for alias resolution
 const variableIdMap = new Map<string, string>();
+
+const sendCollectionsStatus = async () => {
+  const existingCollections = await figma.variables.getLocalVariableCollectionsAsync();
+  const existingVariables = await figma.variables.getLocalVariablesAsync();
+  
+  const modesData = JSON.parse(MODES_DATA);
+  const primitivesData = JSON.parse(PRIMITIVES_DATA);
+  
+  const sortVariables = (vars: any[]) => {
+    return vars.sort((a, b) => a.name.localeCompare(b.name));
+  };
+  modesData.variables = sortVariables(modesData.variables);
+  primitivesData.variables = sortVariables(primitivesData.variables);
+  
+  const modesExist = existingCollections.some(c => c.name === modesData.name && existingVariables.some(v => v.variableCollectionId === c.id));
+  const primitivesExist = existingCollections.some(c => c.name === primitivesData.name && existingVariables.some(v => v.variableCollectionId === c.id));
+  const modesCollection = existingCollections.find(c => c.name === modesData.name);
+  const primitivesCollection = existingCollections.find(c => c.name === primitivesData.name);
+  const headingCount = modesCollection
+    ? existingVariables.filter(v => v.variableCollectionId === modesCollection.id && v.name.startsWith('Typography/Heading/')).length
+    : 0;
+  const bodyCount = modesCollection
+    ? existingVariables.filter(v =>
+      v.variableCollectionId === modesCollection.id &&
+      (v.name.startsWith('Typography/Text/') || v.name.startsWith('Typography/Body/'))
+    ).length
+    : 0;
+  const figmaModesPreview = {
+    id: modesCollection?.id || modesData.id,
+    name: modesCollection?.name || modesData.name,
+    modes: modesCollection
+      ? modesCollection.modes.reduce((acc, mode) => {
+        acc[mode.modeId] = mode.name;
+        return acc;
+      }, {} as Record<string, string>)
+      : modesData.modes,
+    variables: sortVariables(
+      (modesCollection
+        ? existingVariables.filter(v => v.variableCollectionId === modesCollection.id)
+        : []
+      ).map(v => ({
+        id: v.id,
+        name: v.name,
+        type: v.resolvedType,
+        valuesByMode: v.valuesByMode
+      }))
+    )
+  };
+  const figmaPrimitivesPreview = {
+    id: primitivesCollection?.id || primitivesData.id,
+    name: primitivesCollection?.name || primitivesData.name,
+    modes: primitivesCollection
+      ? primitivesCollection.modes.reduce((acc, mode) => {
+        acc[mode.modeId] = mode.name;
+        return acc;
+      }, {} as Record<string, string>)
+      : primitivesData.modes,
+    variables: sortVariables(
+      (primitivesCollection
+        ? existingVariables.filter(v => v.variableCollectionId === primitivesCollection.id)
+        : []
+      ).map(v => ({
+        id: v.id,
+        name: v.name,
+        type: v.resolvedType,
+        valuesByMode: v.valuesByMode
+      }))
+    )
+  };
+  
+  figma.ui.postMessage({ 
+    type: 'collections-status', 
+    modesExist,
+    primitivesExist,
+    headingCount,
+    bodyCount,
+    preview: {
+      modes: modesData,
+      primitives: primitivesData
+    },
+    figmaPreview: {
+      modes: figmaModesPreview,
+      primitives: figmaPrimitivesPreview
+    }
+  });
+};
+
+let collectionsStatusDebounce: number | null = null;
+const queueCollectionsStatus = () => {
+  if (collectionsStatusDebounce !== null) {
+    clearTimeout(collectionsStatusDebounce);
+  }
+  collectionsStatusDebounce = setTimeout(() => {
+    collectionsStatusDebounce = null;
+    sendCollectionsStatus().catch(() => {});
+  }, 120) as unknown as number;
+};
 
 // Helper to notify UI of selection changes
 const updateSelectionInfo = () => {
@@ -21,49 +119,12 @@ const updateSelectionInfo = () => {
 };
 
 figma.on("selectionchange", updateSelectionInfo);
+figma.on("documentchange", queueCollectionsStatus);
 updateSelectionInfo();
 
 figma.ui.onmessage = async (msg: { type: string, data?: any }) => {
   if (msg.type === 'check-collections') {
-    const existingCollections = await figma.variables.getLocalVariableCollectionsAsync();
-    const existingVariables = await figma.variables.getLocalVariablesAsync();
-    
-    const modesData = JSON.parse(MODES_DATA);
-    const primitivesData = JSON.parse(PRIMITIVES_DATA);
-    
-    // Sort variables internally before sending to UI so UI always reflects expected structural order
-    const sortVariables = (vars: any[]) => {
-      return vars.sort((a, b) => a.name.localeCompare(b.name));
-    };
-    modesData.variables = sortVariables(modesData.variables);
-    primitivesData.variables = sortVariables(primitivesData.variables);
-    
-    // In Figma, users can delete variables but keep the collection.
-    // Check if the collection exists AND actually has variables in it to avoid false positives.
-    const modesExist = existingCollections.some(c => c.name === modesData.name && existingVariables.some(v => v.variableCollectionId === c.id));
-    const primitivesExist = existingCollections.some(c => c.name === primitivesData.name && existingVariables.some(v => v.variableCollectionId === c.id));
-    const modesCollection = existingCollections.find(c => c.name === modesData.name);
-    const headingCount = modesCollection
-      ? existingVariables.filter(v => v.variableCollectionId === modesCollection.id && v.name.startsWith('Typography/Heading/')).length
-      : 0;
-    const bodyCount = modesCollection
-      ? existingVariables.filter(v =>
-        v.variableCollectionId === modesCollection.id &&
-        (v.name.startsWith('Typography/Text/') || v.name.startsWith('Typography/Body/'))
-      ).length
-      : 0;
-    
-    figma.ui.postMessage({ 
-      type: 'collections-status', 
-      modesExist,
-      primitivesExist,
-      headingCount,
-      bodyCount,
-      preview: {
-        modes: modesData,
-        primitives: primitivesData
-      }
-    });
+    await sendCollectionsStatus();
   }
 
   if (msg.type === 'create-grid-style') {
@@ -128,7 +189,7 @@ figma.ui.onmessage = async (msg: { type: string, data?: any }) => {
     const existingStyles = await figma.getLocalTextStylesAsync();
     const customRows = Array.isArray(msg.data?.rows) ? msg.data.rows : [];
     if (customRows.length > 0) {
-      const sectionLabel = msg.data?.section === 'heading' ? 'Heading' : 'Text';
+      const defaultSectionLabel = msg.data?.section === 'heading' ? 'Heading' : 'Text';
       const toNumber = (value: unknown, fallback: number) => {
         const parsed = parseFloat(String(value ?? '').replace(/[^0-9.-]/g, ''));
         return Number.isFinite(parsed) ? parsed : fallback;
@@ -155,20 +216,100 @@ figma.ui.onmessage = async (msg: { type: string, data?: any }) => {
           return { family, style: 'Regular' };
         }
       };
+      const normalizeFontFamily = (value: unknown) => {
+        const raw = String(value || '').trim();
+        if (!raw) return 'Inter';
+        const primary = raw.split(',')[0].trim().replace(/^['"]|['"]$/g, '');
+        return primary || 'Inter';
+      };
+      const normalizeFontStyle = (value: unknown) => {
+        const raw = String(value || '').trim();
+        if (!raw) return 'Regular';
+        const compact = raw.replace(/\s+/g, '').toLowerCase();
+        const numericMap: Record<string, string> = {
+          '100': 'Thin',
+          '200': 'Extra Light',
+          '300': 'Light',
+          '400': 'Regular',
+          '500': 'Medium',
+          '600': 'Semi Bold',
+          '700': 'Bold',
+          '800': 'Extra Bold',
+          '900': 'Black'
+        };
+        return numericMap[compact] || raw;
+      };
+      const localVariables = await figma.variables.getLocalVariablesAsync();
+      const normalizeComparable = (value: unknown) => String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[\s_-]+/g, '');
+      const findVariableByPath = (path: unknown) => {
+        const normalized = String(path || '').trim().toLowerCase();
+        if (!normalized) return null;
+        return localVariables.find(v => v.name.toLowerCase() === normalized) || null;
+      };
+      const resolveVariableValue = (inputVariable: Variable | null) => {
+        const variable = inputVariable;
+        if (!variable) return null;
+        const visited = new Set<string>();
+        let current = variable;
+        while (current && !visited.has(current.id)) {
+          visited.add(current.id);
+          const currentModeIds = Object.keys(current.valuesByMode || {});
+          if (currentModeIds.length === 0) return null;
+          const currentVal = current.valuesByMode[currentModeIds[0]];
+          if (
+            currentVal &&
+            typeof currentVal === 'object' &&
+            'type' in currentVal &&
+            currentVal.type === 'VARIABLE_ALIAS'
+          ) {
+            const target = localVariables.find(v => v.id === currentVal.id);
+            if (!target) return null;
+            current = target;
+            continue;
+          }
+          return currentVal;
+        }
+        return null;
+      };
+      const findTypographyVariable = (path: unknown, folderPrefix: string, tokenHint: unknown) => {
+        const byPath = findVariableByPath(path);
+        if (byPath) return byPath;
+        const prefix = folderPrefix.toLowerCase();
+        const candidates = localVariables.filter(v => v.name.toLowerCase().startsWith(prefix));
+        if (candidates.length === 0) return null;
+        const hint = normalizeComparable(tokenHint);
+        if (!hint) return candidates[0];
+        const byName = candidates.find(v => normalizeComparable(v.name.split('/').pop()) === hint);
+        if (byName) return byName;
+        const byValue = candidates.find(v => normalizeComparable(resolveVariableValue(v)) === hint);
+        return byValue || candidates[0];
+      };
 
       for (const row of customRows) {
-        const size = Math.max(1, toNumber(row.size, 16));
+        const sizeVariable = findVariableByPath(row.path);
+        const fontFamilyVariable = findTypographyVariable(row.fontPath, 'Typography/Font Family/', row.font);
+        const fontWeightVariable = findTypographyVariable(row.fontWeightPath, 'Typography/Font Weight/', row.fontWeight);
+        const resolvedSize = resolveVariableValue(sizeVariable);
+        const size = Math.max(1, toNumber(resolvedSize ?? row.size, 16));
         const lineHeight = Math.max(1, toNumber(row.lineHeight, 140));
         const lineSpacing = toNumber(row.lineSpacing, 0);
         const lineHeightUnit = String(row.lineHeightUnit || 'PERCENT').toUpperCase() === 'PIXELS' ? 'PIXELS' : 'PERCENT';
         const lineSpacingUnit = String(row.lineSpacingUnit || 'PERCENT').toUpperCase() === 'PIXELS' ? 'PIXELS' : 'PERCENT';
-        const fontFamily = String(row.font || 'Inter').trim() || 'Inter';
-        const fontStyle = String(row.fontWeight || 'Regular').trim() || 'Regular';
+        const resolvedFontFamily = resolveVariableValue(fontFamilyVariable);
+        const resolvedFontStyle = resolveVariableValue(fontWeightVariable);
+        const fontFamily = normalizeFontFamily(resolvedFontFamily ?? row.font);
+        const fontStyle = normalizeFontStyle(resolvedFontStyle ?? row.fontWeight);
         const fontName = await loadFontSafe(fontFamily, fontStyle);
         const rowPath = String(row.path || '').trim();
         const rowNameRaw = rowPath || String(row.name || 'Style').trim();
         const rowName = rowNameRaw.split('/').pop() || rowNameRaw;
-        const styleName = `${sectionLabel}/${rowName} - ${size}/${lineHeight}`;
+        const rowSectionLabel = String(row.section || '').toLowerCase() === 'heading'
+          ? 'Heading'
+          : (String(row.section || '').toLowerCase() === 'body' ? 'Text' : defaultSectionLabel);
+        const styleName = `${rowSectionLabel}/${rowName} - ${size}/${lineHeight}`;
 
         let textStyle = existingStyles.find(s => s.name === styleName);
         if (!textStyle) {
@@ -181,9 +322,37 @@ figma.ui.onmessage = async (msg: { type: string, data?: any }) => {
         textStyle.lineHeight = { value: lineHeight, unit: lineHeightUnit };
         textStyle.letterSpacing = { value: lineSpacing, unit: lineSpacingUnit };
         textStyle.textCase = toTextCase(row.case);
+        if (sizeVariable && sizeVariable.resolvedType === 'FLOAT') {
+          textStyle.setBoundVariable('fontSize', sizeVariable);
+        }
+        if (fontFamilyVariable && fontFamilyVariable.resolvedType === 'STRING') {
+          textStyle.setBoundVariable('fontFamily', fontFamilyVariable);
+        }
+        if (fontWeightVariable) {
+          if (fontWeightVariable.resolvedType === 'STRING') {
+            let stringWeightBound = false;
+            try {
+              textStyle.setBoundVariable('fontWeight', fontWeightVariable);
+              stringWeightBound = true;
+            } catch {
+              stringWeightBound = false;
+            }
+            if (!stringWeightBound) {
+              textStyle.setBoundVariable('fontStyle', fontWeightVariable);
+            }
+          } else if (fontWeightVariable.resolvedType === 'FLOAT') {
+            textStyle.setBoundVariable('fontWeight', fontWeightVariable);
+          }
+        }
       }
 
-      figma.notify(`${sectionLabel} Styles Created!`);
+      const hasHeadingRows = customRows.some((row: unknown) => String((row as { section?: unknown }).section || '').toLowerCase() === 'heading');
+      const hasTextRows = customRows.some((row: unknown) => String((row as { section?: unknown }).section || '').toLowerCase() === 'body');
+      if (hasHeadingRows && hasTextRows) {
+        figma.notify('Typography Styles Created!');
+      } else {
+        figma.notify(`${defaultSectionLabel} Styles Created!`);
+      }
       return;
     }
 
