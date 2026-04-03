@@ -10,19 +10,39 @@ figma.loadAllPagesAsync().catch(() => {});
 
 // Map to track variable IDs across collections for alias resolution
 const variableIdMap = new Map<string, string>();
+type SLVariableAlias = { type: 'VARIABLE_ALIAS'; id: string };
+type SLColorValue = { r: number; g: number; b: number; a: number };
+type SLVariableValue = string | number | boolean | SLVariableAlias | SLColorValue;
+type SLVariableJSON = {
+  id: string;
+  name: string;
+  type: string;
+  valuesByMode: Record<string, SLVariableValue>;
+  resolvedValuesByMode?: Record<string, unknown>;
+};
+type SLCollectionJSON = {
+  id: string;
+  name: string;
+  modes: Record<string, string>;
+  variableIds?: string[];
+  variables: SLVariableJSON[];
+};
+const orderCollectionVariables = (collectionData: SLCollectionJSON): SLCollectionJSON => {
+  const ids = Array.isArray(collectionData.variableIds) ? collectionData.variableIds : [];
+  if (!Array.isArray(collectionData.variables) || ids.length === 0) return collectionData;
+  const variableById = new Map<string, SLVariableJSON>(collectionData.variables.map((variable) => [variable.id, variable]));
+  const ordered = ids.map((id) => variableById.get(id)).filter((v): v is SLVariableJSON => !!v);
+  const remaining = collectionData.variables.filter((variable) => ids.indexOf(variable.id) === -1);
+  collectionData.variables = [...ordered, ...remaining];
+  return collectionData;
+};
 
 const sendCollectionsStatus = async () => {
   const existingCollections = await figma.variables.getLocalVariableCollectionsAsync();
   const existingVariables = await figma.variables.getLocalVariablesAsync();
   
-  const modesData = JSON.parse(MODES_DATA);
-  const primitivesData = JSON.parse(PRIMITIVES_DATA);
-  
-  const sortVariables = (vars: any[]) => {
-    return vars.sort((a, b) => a.name.localeCompare(b.name));
-  };
-  modesData.variables = sortVariables(modesData.variables);
-  primitivesData.variables = sortVariables(primitivesData.variables);
+  const modesData = orderCollectionVariables(JSON.parse(MODES_DATA));
+  const primitivesData = orderCollectionVariables(JSON.parse(PRIMITIVES_DATA));
   
   const modesExist = existingCollections.some(c => c.name === modesData.name && existingVariables.some(v => v.variableCollectionId === c.id));
   const primitivesExist = existingCollections.some(c => c.name === primitivesData.name && existingVariables.some(v => v.variableCollectionId === c.id));
@@ -46,17 +66,15 @@ const sendCollectionsStatus = async () => {
         return acc;
       }, {} as Record<string, string>)
       : modesData.modes,
-    variables: sortVariables(
-      (modesCollection
-        ? existingVariables.filter(v => v.variableCollectionId === modesCollection.id)
-        : []
-      ).map(v => ({
+    variables: (modesCollection
+      ? existingVariables.filter(v => v.variableCollectionId === modesCollection.id)
+      : []
+    ).map(v => ({
         id: v.id,
         name: v.name,
         type: v.resolvedType,
         valuesByMode: v.valuesByMode
       }))
-    )
   };
   const figmaPrimitivesPreview = {
     id: primitivesCollection?.id || primitivesData.id,
@@ -67,17 +85,15 @@ const sendCollectionsStatus = async () => {
         return acc;
       }, {} as Record<string, string>)
       : primitivesData.modes,
-    variables: sortVariables(
-      (primitivesCollection
-        ? existingVariables.filter(v => v.variableCollectionId === primitivesCollection.id)
-        : []
-      ).map(v => ({
+    variables: (primitivesCollection
+      ? existingVariables.filter(v => v.variableCollectionId === primitivesCollection.id)
+      : []
+    ).map(v => ({
         id: v.id,
         name: v.name,
         type: v.resolvedType,
         valuesByMode: v.valuesByMode
       }))
-    )
   };
   
   figma.ui.postMessage({ 
@@ -463,13 +479,8 @@ figma.ui.onmessage = async (msg: { type: string, data?: any }) => {
     const modesRaw = MODES_DATA;
     const primitivesRaw = PRIMITIVES_DATA;
     
-    const parsedModes = JSON.parse(modesRaw);
-    const parsedPrimitives = JSON.parse(primitivesRaw);
-    const sortVariables = (vars: any[]) => {
-      return vars.sort((a, b) => a.name.localeCompare(b.name));
-    };
-    parsedModes.variables = sortVariables(parsedModes.variables);
-    parsedPrimitives.variables = sortVariables(parsedPrimitives.variables);
+    const parsedModes = orderCollectionVariables(JSON.parse(modesRaw));
+    const parsedPrimitives = orderCollectionVariables(JSON.parse(primitivesRaw));
 
     // Figma postMessage often fails silently with large JSON payloads.
     // Instead of parsing here, we send the raw JSON strings and let the UI parse them.
@@ -487,18 +498,14 @@ figma.ui.onmessage = async (msg: { type: string, data?: any }) => {
         modesData: JSON.parse(MODES_DATA), 
         primitivesData: JSON.parse(PRIMITIVES_DATA) 
       };
-      
-      const sortVariables = (vars: any[]) => {
-        return vars.sort((a, b) => a.name.localeCompare(b.name));
-      };
-      modesData.variables = sortVariables(modesData.variables);
-      primitivesData.variables = sortVariables(primitivesData.variables);
+      const normalizedModesData = orderCollectionVariables(modesData);
+      const normalizedPrimitivesData = orderCollectionVariables(primitivesData);
       
       const existingCollections = await figma.variables.getLocalVariableCollectionsAsync();
       const existingVariables = await figma.variables.getLocalVariablesAsync();
 
       const hasDuplicate = existingCollections.some(c => 
-        (c.name === modesData.name || c.name === primitivesData.name) && 
+        (c.name === normalizedModesData.name || c.name === normalizedPrimitivesData.name) && 
         existingVariables.some(v => v.variableCollectionId === c.id)
       );
       
@@ -516,15 +523,15 @@ figma.ui.onmessage = async (msg: { type: string, data?: any }) => {
       // const existingVariables = await figma.variables.getLocalVariablesAsync(); // Moved up
 
       // First pass: Create/Find collections and variables
-      const coll1 = await prepareCollection(primitivesData, existingCollections, existingVariables);
-      const coll2 = await prepareCollection(modesData, existingCollections, existingVariables);
+      const coll1 = await prepareCollection(normalizedPrimitivesData, existingCollections, existingVariables);
+      const coll2 = await prepareCollection(normalizedModesData, existingCollections, existingVariables);
 
       // Refresh variables list after creation
       const allVariables = await figma.variables.getLocalVariablesAsync();
 
       // Second pass: Set values and resolve aliases
-      await applyCollectionValues(primitivesData, coll1, allVariables);
-      await applyCollectionValues(modesData, coll2, allVariables);
+      await applyCollectionValues(normalizedPrimitivesData, coll1, allVariables);
+      await applyCollectionValues(normalizedModesData, coll2, allVariables);
 
       const timestamp = new Date().toLocaleTimeString();
       figma.ui.postMessage({ 

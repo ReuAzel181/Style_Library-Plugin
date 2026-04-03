@@ -369,6 +369,10 @@ th:last-child, td:last-child {
 .table-input[contenteditable="true"] {
   min-height: 20px;
 }
+.table-input::placeholder {
+  color: var(--muted);
+  opacity: 0.72;
+}
 
 .ls-import-btn:disabled {
   opacity: 0.45;
@@ -428,6 +432,29 @@ td {
 td:hover { background: rgba(128,128,128,0.05); }
 tr:focus-within td { background: var(--accent-soft); }
 td:focus-within { background: var(--bg) !important; outline: 2px solid var(--accent); outline-offset: -2px; z-index: 2; position: relative; }
+.variable-row.dragging {
+  opacity: 0.45;
+}
+.variable-row.drag-over-before td {
+  border-top: 2px solid var(--accent);
+}
+.variable-row.drag-over-after td {
+  border-bottom: 2px solid var(--accent);
+}
+.drag-handle {
+  width: 14px;
+  color: var(--muted);
+  opacity: 0.55;
+  font-size: 12px;
+  line-height: 1;
+  letter-spacing: -2px;
+  cursor: grab;
+  user-select: none;
+  flex-shrink: 0;
+}
+.variable-row.dragging .drag-handle {
+  cursor: grabbing;
+}
 
 /* Custom Color Picker Modal */
 .color-picker-modal {

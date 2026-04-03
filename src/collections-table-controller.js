@@ -5,7 +5,8 @@ export function createCollectionsTableController({
   getFontWeightName,
   formatFigmaWeight,
   getFontWeightNum,
-  loadGoogleFont
+  loadGoogleFont,
+  onReorderVariable
 }) {
   const escapeJsString = (value) => String(value ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 
@@ -14,39 +15,9 @@ export function createCollectionsTableController({
     const modeNames = Object.values(data.modes);
     const activeGroupPath = getActiveGroupPath();
 
-    let filteredVars = activeGroupPath === 'All'
+    const filteredVars = activeGroupPath === 'All'
       ? data.variables
       : data.variables.filter(v => v.name.startsWith(activeGroupPath + '/'));
-
-    filteredVars = filteredVars.sort((a, b) => {
-      const valA = a.valuesByMode[modeKeys[0]];
-      const valB = b.valuesByMode[modeKeys[0]];
-
-      let resA = valA;
-      let resB = valB;
-
-      if (typeof valA === 'object' && valA?.type === 'VARIABLE_ALIAS') {
-        resA = a.resolvedValuesByMode?.[modeKeys[0]]?.resolvedValue;
-      }
-      if (typeof valB === 'object' && valB?.type === 'VARIABLE_ALIAS') {
-        resB = b.resolvedValuesByMode?.[modeKeys[0]]?.resolvedValue;
-      }
-
-      const nameA = a.name.split('/').pop().toLowerCase();
-      const nameB = b.name.split('/').pop().toLowerCase();
-
-      if (nameA === 'heading_small' && nameB === 'h1') return -1;
-      if (nameA === 'h1' && nameB === 'heading_small') return 1;
-
-      const numA = parseFloat(resA);
-      const numB = parseFloat(resB);
-
-      if (!isNaN(numA) && !isNaN(numB)) {
-        return numB - numA;
-      }
-
-      return a.name.localeCompare(b.name);
-    });
 
     tokenTotal.textContent = `${filteredVars.length} tokens`;
 
@@ -88,9 +59,10 @@ export function createCollectionsTableController({
       if (v.type === 'BOOLEAN') typeSymbol = 'B';
 
       html += `
-        <tr>
+        <tr class="variable-row" draggable="true" data-variable-id="${v.id}">
           <td onclick="focusInput('in-${v.id}')">
             <div class="cell-content">
+              <div class="drag-handle" title="Drag to reorder">⋮⋮</div>
               ${getTypeIcon(typeSymbol)}
               <input type="text" class="table-input" id="in-${v.id}" value="${leafName}" placeholder="Variable Name" 
                 onblur="updateVariableName('${v.id}', this.value)" onkeydown="if(event.key==='Enter') this.blur()">
@@ -211,7 +183,7 @@ export function createCollectionsTableController({
             return `
               <td onclick="focusInput('val-${v.id}-${mId}')">
                 <div class="cell-content">
-                  <input type="text" class="table-input" id="val-${v.id}-${mId}" value="${displayVal}" placeholder="Value"
+                  <input type="text" class="table-input" id="val-${v.id}-${mId}" value="${displayVal}" placeholder="Enter a Value"
                     onblur="updateVariableValue('${v.id}', '${mId}', this.value)" onkeydown="if(event.key==='Enter') this.blur(); ${isNumber ? `if(event.key==='ArrowUp'||event.key==='ArrowDown'){event.preventDefault(); let val=parseFloat(this.value)||0; val+=(event.key==='ArrowUp'?1:-1)*(event.shiftKey?8:1); this.value=val; updateVariableValue('${v.id}','${mId}',val);}` : ''}">
                   <div class="link-btn" title="Link to Variable" onclick="showPicker('${v.id}', '${mId}', event); event.stopPropagation();">
                     ${hexagonIcon}
@@ -246,6 +218,72 @@ export function createCollectionsTableController({
     `;
 
     tableContainer.innerHTML = html;
+    const rows = Array.from(tableContainer.querySelectorAll('tbody tr.variable-row'));
+    const handles = Array.from(tableContainer.querySelectorAll('.drag-handle'));
+    let draggedId = null;
+    const clearDropState = () => {
+      rows.forEach((row) => {
+        row.classList.remove('dragging');
+        row.classList.remove('drag-over-before');
+        row.classList.remove('drag-over-after');
+      });
+    };
+    rows.forEach((row) => {
+      row.draggable = false;
+      row.addEventListener('dragover', (event) => {
+        if (!draggedId) return;
+        event.preventDefault();
+        if (row.dataset.variableId === draggedId) return;
+        row.classList.remove('drag-over-before');
+        row.classList.remove('drag-over-after');
+        const rect = row.getBoundingClientRect();
+        const placeAfter = event.clientY >= rect.top + rect.height / 2;
+        row.classList.add(placeAfter ? 'drag-over-after' : 'drag-over-before');
+      });
+      row.addEventListener('dragleave', () => {
+        row.classList.remove('drag-over-before');
+        row.classList.remove('drag-over-after');
+      });
+      row.addEventListener('drop', (event) => {
+        if (!draggedId) return;
+        event.preventDefault();
+        const targetId = row.dataset.variableId || null;
+        if (!targetId || targetId === draggedId) {
+          clearDropState();
+          draggedId = null;
+          return;
+        }
+        const rect = row.getBoundingClientRect();
+        const placeAfter = event.clientY >= rect.top + rect.height / 2;
+        onReorderVariable(draggedId, targetId, placeAfter);
+        clearDropState();
+        draggedId = null;
+      });
+      row.addEventListener('dragend', () => {
+        clearDropState();
+        draggedId = null;
+      });
+    });
+    handles.forEach((handle) => {
+      handle.draggable = true;
+      handle.addEventListener('dragstart', (event) => {
+        const row = handle.closest('tr.variable-row');
+        if (!row) {
+          event.preventDefault();
+          return;
+        }
+        draggedId = row.dataset.variableId || null;
+        row.classList.add('dragging');
+        if (event.dataTransfer) {
+          event.dataTransfer.effectAllowed = 'move';
+          event.dataTransfer.setData('text/plain', draggedId || '');
+        }
+      });
+      handle.addEventListener('dragend', () => {
+        clearDropState();
+        draggedId = null;
+      });
+    });
   };
 
   return {

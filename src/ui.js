@@ -294,9 +294,9 @@ import { createCollectionsTableController } from "./collections-table-controller
         actionBtn.removeAttribute('disabled');
         
         if (modesExist && primitivesExist) {
-          actionBtn.textContent = 'Load Library for Review';
+          actionBtn.textContent = 'Load for Review';
         } else {
-          actionBtn.textContent = 'Load Library for Review';
+          actionBtn.textContent = 'Load for Review';
         }
         if (activeViewMode === 'local-styles') {
           localStylesController.render(getLocalStylesSource());
@@ -413,7 +413,7 @@ import { createCollectionsTableController } from "./collections-table-controller
         progressFill.style.width = '100%';
         updateStatus(msg.message, true);
         state = 'init';
-        actionBtn.textContent = 'Load Library for Review';
+        actionBtn.textContent = 'Load for Review';
         parent.postMessage({ pluginMessage: { type: 'check-collections' } }, '*');
       }
 
@@ -1083,7 +1083,26 @@ import { createCollectionsTableController } from "./collections-table-controller
       getFontWeightName,
       formatFigmaWeight,
       getFontWeightNum,
-      loadGoogleFont
+      loadGoogleFont,
+      onReorderVariable: (draggedId, targetId, placeAfter) => {
+        const data = activeCollection === 'modes' ? modesData : primitivesData;
+        if (!data) return;
+        const fromIndex = data.variables.findIndex((v) => v.id === draggedId);
+        let toIndex = data.variables.findIndex((v) => v.id === targetId);
+        if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return;
+        if (activeGroupPath !== 'All') {
+          const groupPrefix = `${activeGroupPath}/`;
+          const draggedVar = data.variables[fromIndex];
+          const targetVar = data.variables[toIndex];
+          if (!draggedVar.name.startsWith(groupPrefix) || !targetVar.name.startsWith(groupPrefix)) return;
+        }
+        saveToHistory();
+        const [moved] = data.variables.splice(fromIndex, 1);
+        if (fromIndex < toIndex) toIndex--;
+        const insertIndex = placeAfter ? toIndex + 1 : toIndex;
+        data.variables.splice(insertIndex, 0, moved);
+        renderTable(data);
+      }
     });
     window.switchLSNav = (navId) => {
       localStylesController.switchNav(navId);
