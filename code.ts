@@ -17,6 +17,7 @@ type SLVariableJSON = {
   id: string;
   name: string;
   type: string;
+  description?: string;
   valuesByMode: Record<string, SLVariableValue>;
   resolvedValuesByMode?: Record<string, unknown>;
 };
@@ -28,18 +29,68 @@ type SLCollectionJSON = {
   variables: SLVariableJSON[];
 };
 const orderCollectionVariables = (collectionData: SLCollectionJSON): SLCollectionJSON => {
-  const ids = Array.isArray(collectionData.variableIds) ? collectionData.variableIds : [];
-  if (!Array.isArray(collectionData.variables) || ids.length === 0) return collectionData;
+  if (!Array.isArray(collectionData.variableIds)) return collectionData;
   const variableById = new Map<string, SLVariableJSON>(collectionData.variables.map((variable) => [variable.id, variable]));
-  const ordered = ids.map((id) => variableById.get(id)).filter((v): v is SLVariableJSON => !!v);
-  const remaining = collectionData.variables.filter((variable) => ids.indexOf(variable.id) === -1);
-  collectionData.variables = [...ordered, ...remaining];
+  collectionData.variables = collectionData.variableIds
+    .map((id) => variableById.get(id))
+    .filter((variable): variable is SLVariableJSON => !!variable);
   return collectionData;
+};
+const orderByIds = <T extends { id: string }>(items: T[], ids?: string[]): T[] => {
+  if (!Array.isArray(ids)) return items;
+  const itemById = new Map<string, T>(items.map((item) => [item.id, item]));
+  return ids.map((id) => itemById.get(id)).filter((item): item is T => !!item);
+};
+const isVariableAliasValue = (value: unknown): value is VariableAlias => {
+  if (typeof value !== 'object' || value === null) return false;
+  if (!('type' in value) || !('id' in value)) return false;
+  return (value as { type?: unknown }).type === 'VARIABLE_ALIAS' && typeof (value as { id?: unknown }).id === 'string';
+};
+const getFallbackModeId = (variable: Variable): string | null => {
+  const modeIds = Object.keys(variable.valuesByMode || {});
+  return modeIds.length > 0 ? modeIds[0] : null;
+};
+const resolveValueByMode = (
+  variable: Variable,
+  modeId: string,
+  variableById: Map<string, Variable>,
+  visited: Set<string> = new Set()
+): VariableValue => {
+  if (visited.has(variable.id)) {
+    const fallbackModeId = getFallbackModeId(variable);
+    return variable.valuesByMode[modeId] ?? (fallbackModeId ? variable.valuesByMode[fallbackModeId] : undefined);
+  }
+  visited.add(variable.id);
+  const fallbackModeId = getFallbackModeId(variable);
+  const currentValue = variable.valuesByMode[modeId] ?? (fallbackModeId ? variable.valuesByMode[fallbackModeId] : undefined);
+  if (!isVariableAliasValue(currentValue)) {
+    return currentValue;
+  }
+  const targetVariable = variableById.get(currentValue.id);
+  if (!targetVariable) {
+    return currentValue;
+  }
+  const targetModeId = targetVariable.valuesByMode[modeId] !== undefined
+    ? modeId
+    : getFallbackModeId(targetVariable);
+  if (!targetModeId) {
+    return currentValue;
+  }
+  return resolveValueByMode(targetVariable, targetModeId, variableById, visited);
+};
+const buildResolvedValuesByMode = (variable: Variable, variableById: Map<string, Variable>): Record<string, VariableValue> => {
+  const modeIds = Object.keys(variable.valuesByMode || {});
+  const resolved: Record<string, VariableValue> = {};
+  for (const modeId of modeIds) {
+    resolved[modeId] = resolveValueByMode(variable, modeId, variableById);
+  }
+  return resolved;
 };
 
 const sendCollectionsStatus = async () => {
   const existingCollections = await figma.variables.getLocalVariableCollectionsAsync();
   const existingVariables = await figma.variables.getLocalVariablesAsync();
+  const variableById = new Map<string, Variable>(existingVariables.map((variable) => [variable.id, variable]));
   
   const modesData = orderCollectionVariables(JSON.parse(MODES_DATA));
   const primitivesData = orderCollectionVariables(JSON.parse(PRIMITIVES_DATA));
@@ -57,6 +108,12 @@ const sendCollectionsStatus = async () => {
       (v.name.startsWith('Typography/Text/') || v.name.startsWith('Typography/Body/'))
     ).length
     : 0;
+  const modesPreviewOrderIds = Array.isArray(modesCollection?.variableIds) && modesCollection.variableIds.length > 0
+    ? modesCollection.variableIds
+    : modesData.variableIds;
+  const primitivesPreviewOrderIds = Array.isArray(primitivesCollection?.variableIds) && primitivesCollection.variableIds.length > 0
+    ? primitivesCollection.variableIds
+    : primitivesData.variableIds;
   const figmaModesPreview = {
     id: modesCollection?.id || modesData.id,
     name: modesCollection?.name || modesData.name,
@@ -66,14 +123,16 @@ const sendCollectionsStatus = async () => {
         return acc;
       }, {} as Record<string, string>)
       : modesData.modes,
-    variables: (modesCollection
-      ? existingVariables.filter(v => v.variableCollectionId === modesCollection.id)
-      : []
+    variables: orderByIds(
+      modesCollection
+        ? existingVariables.filter(v => v.variableCollectionId === modesCollection.id)
+        : [],
+      modesPreviewOrderIds
     ).map(v => ({
         id: v.id,
         name: v.name,
         type: v.resolvedType,
-        valuesByMode: v.valuesByMode
+        valuesByMode: buildResolvedValuesByMode(v, variableById)
       }))
   };
   const figmaPrimitivesPreview = {
@@ -85,14 +144,16 @@ const sendCollectionsStatus = async () => {
         return acc;
       }, {} as Record<string, string>)
       : primitivesData.modes,
-    variables: (primitivesCollection
-      ? existingVariables.filter(v => v.variableCollectionId === primitivesCollection.id)
-      : []
+    variables: orderByIds(
+      primitivesCollection
+        ? existingVariables.filter(v => v.variableCollectionId === primitivesCollection.id)
+        : [],
+      primitivesPreviewOrderIds
     ).map(v => ({
         id: v.id,
         name: v.name,
         type: v.resolvedType,
-        valuesByMode: v.valuesByMode
+        valuesByMode: buildResolvedValuesByMode(v, variableById)
       }))
   };
   
@@ -556,7 +617,7 @@ figma.ui.onmessage = async (msg: { type: string, data?: any }) => {
   }
 };
 
-async function prepareCollection(data: any, existingCollections: VariableCollection[], existingVariables: Variable[]) {
+async function prepareCollection(data: SLCollectionJSON, existingCollections: VariableCollection[], existingVariables: Variable[]) {
   let collection = existingCollections.find(c => c.name === data.name);
   
   if (!collection) {
@@ -580,29 +641,41 @@ async function prepareCollection(data: any, existingCollections: VariableCollect
 
   // Create variables
   // IMPORTANT: Keep track of insertion order to preserve plugin group layout in Figma
-  for (const v of data.variables) {
-    let variable = existingVariables.find(varItem => varItem.name === v.name && varItem.variableCollectionId === collection?.id);
-    
+  const orderedIds = Array.isArray(data.variableIds) && data.variableIds.length > 0
+    ? data.variableIds
+    : data.variables.map((variable) => variable.id);
+  const variableById = new Map<string, SLVariableJSON>(data.variables.map((variable) => [variable.id, variable]));
+  for (const id of orderedIds) {
+    const v = variableById.get(id);
+    if (!v) continue;
+    let variable = existingVariables.find(varItem => variableIdMap.get(v.id) === varItem.id);
     if (!variable) {
       variable = figma.variables.createVariable(v.name, collection, v.type as VariableResolvedDataType);
+      existingVariables.push(variable);
     }
-    
-    // Map the old ID to the new Figma ID
     variableIdMap.set(v.id, variable.id);
   }
 
   return collection;
 }
 
-async function applyCollectionValues(data: any, collection: VariableCollection, allVariables: Variable[]) {
+async function applyCollectionValues(data: SLCollectionJSON, collection: VariableCollection, allVariables: Variable[]) {
   const modeIds = Object.keys(data.modes);
   const collectionModes = collection.modes;
 
   // Filter variables belonging to this collection once
   const collectionVars = allVariables.filter(v => v.variableCollectionId === collection.id);
 
-  for (const v of data.variables) {
-    const variable = collectionVars.find(varItem => varItem.name === v.name);
+  const orderedIds = Array.isArray(data.variableIds) && data.variableIds.length > 0
+    ? data.variableIds
+    : data.variables.map((variable) => variable.id);
+  const variableById = new Map<string, SLVariableJSON>(data.variables.map((variable) => [variable.id, variable]));
+  for (const id of orderedIds) {
+    const v = variableById.get(id);
+    if (!v) continue;
+    const mappedVariableId = variableIdMap.get(v.id);
+    if (!mappedVariableId) continue;
+    const variable = collectionVars.find(varItem => varItem.id === mappedVariableId);
 
     if (!variable) continue;
     if (v.description) variable.description = v.description;
@@ -613,7 +686,7 @@ async function applyCollectionValues(data: any, collection: VariableCollection, 
         const targetModeId = collectionModes[index]?.modeId;
         if (!targetModeId) return;
 
-        if (typeof value === 'object' && value.type === 'VARIABLE_ALIAS') {
+        if (typeof value === 'object' && value !== null && 'type' in value && value.type === 'VARIABLE_ALIAS') {
           const newTargetId = variableIdMap.get(value.id);
           if (newTargetId) {
             variable.setValueForMode(targetModeId, {

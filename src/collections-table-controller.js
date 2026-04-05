@@ -2,6 +2,7 @@ export function createCollectionsTableController({
   tableContainer,
   tokenTotal,
   getActiveGroupPath,
+  getGroupChildOrder,
   getFontWeightName,
   formatFigmaWeight,
   getFontWeightNum,
@@ -46,22 +47,23 @@ export function createCollectionsTableController({
       `;
     };
 
-    filteredVars.forEach(v => {
+    const variableRowHtml = (v, indentLevel = 0) => {
       const parts = v.name.split('/');
       const leafName = parts[parts.length - 1];
       const normalizedLeaf = leafName.toLowerCase().replace(/[-_]/g, ' ');
       const isFontFamily = normalizedLeaf.includes('font family') || normalizedLeaf === 'family';
       const isFontWeight = normalizedLeaf.includes('font weight') || normalizedLeaf === 'weight';
+      const indentPx = Math.max(0, indentLevel) * 16;
 
       let typeSymbol = '#';
       if (v.type === 'COLOR') typeSymbol = '◐';
       if (v.type === 'STRING') typeSymbol = 'T';
       if (v.type === 'BOOLEAN') typeSymbol = 'B';
 
-      html += `
+      return `
         <tr class="variable-row" draggable="true" data-variable-id="${v.id}">
           <td onclick="focusInput('in-${v.id}')">
-            <div class="cell-content">
+            <div class="cell-content" style="${indentPx > 0 ? `padding-left:${indentPx}px;` : ''}">
               <div class="drag-handle" title="Drag to reorder">⋮⋮</div>
               ${getTypeIcon(typeSymbol)}
               <input type="text" class="table-input" id="in-${v.id}" value="${leafName}" placeholder="Variable Name" 
@@ -197,7 +199,94 @@ export function createCollectionsTableController({
           </td>
         </tr>
       `;
-    });
+    };
+
+    const buildGroupTree = (vars) => {
+      const root = { name: 'All', children: {}, vars: [] };
+      vars.forEach((v) => {
+        const segs = String(v.name || '').split('/');
+        if (segs.length <= 1) {
+          if (!root.children['Ungrouped']) root.children['Ungrouped'] = { name: 'Ungrouped', children: {}, vars: [] };
+          root.children['Ungrouped'].vars.push(v);
+          return;
+        }
+        const dirs = segs.slice(0, -1);
+        let node = root;
+        dirs.forEach((dir) => {
+          if (!node.children[dir]) node.children[dir] = { name: dir, children: {}, vars: [] };
+          node = node.children[dir];
+        });
+        node.vars.push(v);
+      });
+      return root;
+    };
+    const countNode = (node) => {
+      let c = (node.vars ? node.vars.length : 0);
+      Object.values(node.children || {}).forEach((child) => { c += countNode(child); });
+      return c;
+    };
+    const renderGroupNode = (node, level = 0, parentPath = 'All') => {
+      const childNames = Object.keys(node.children || {});
+      let names = childNames.slice().sort((a, b) => a.localeCompare(b));
+      if (typeof getGroupChildOrder === 'function') {
+        const preferred = getGroupChildOrder(parentPath);
+        if (Array.isArray(preferred) && preferred.length) {
+          const preferredSet = new Set(preferred);
+          names = [
+            ...preferred.filter((name) => childNames.includes(name)),
+            ...names.filter((name) => !preferredSet.has(name))
+          ];
+        }
+      }
+      names.forEach((name) => {
+        const child = node.children[name];
+        const count = countNode(child);
+        const pad = 12 + level * 16;
+        const isParent = level === 0;
+        html += `
+          <tr class="collection-group-row ${isParent ? 'group-parent' : 'group-child'}">
+            <td colspan="${modeKeys.length + 2}" class="collection-group-cell">
+              <div class="collection-group-inner" style="padding-left:${pad}px;">
+                <span class="collection-group-name">${name}</span>
+                <span class="group-count">(${count})</span>
+              </div>
+            </td>
+          </tr>
+        `;
+        (child.vars || []).forEach((v) => { html += variableRowHtml(v, level + 1); });
+        const childPath = parentPath === 'All' ? name : `${parentPath}/${name}`;
+        renderGroupNode(child, level + 1, childPath);
+      });
+    };
+
+    if (activeGroupPath === 'All') {
+      const tree = buildGroupTree(filteredVars);
+      renderGroupNode(tree, 0);
+    } else {
+      const scopedRoot = { name: activeGroupPath, children: {}, vars: [] };
+      const scopedPrefix = `${activeGroupPath}/`;
+      filteredVars.forEach((v) => {
+        const relativeName = String(v.name || '').startsWith(scopedPrefix)
+          ? String(v.name).slice(scopedPrefix.length)
+          : String(v.name || '');
+        const segs = relativeName.split('/');
+        if (segs.length <= 1) {
+          scopedRoot.vars.push(v);
+          return;
+        }
+        const dirs = segs.slice(0, -1);
+        let node = scopedRoot;
+        dirs.forEach((dir) => {
+          if (!node.children[dir]) node.children[dir] = { name: dir, children: {}, vars: [] };
+          node = node.children[dir];
+        });
+        node.vars.push(v);
+      });
+      (scopedRoot.vars || []).forEach((v) => {
+        html += variableRowHtml(v, 0);
+      });
+      renderGroupNode(scopedRoot, 0, activeGroupPath);
+    }
 
     const existingTypes = new Set(filteredVars.map(v => v.type));
     const showString = existingTypes.size === 0 || existingTypes.has('STRING');
@@ -219,7 +308,7 @@ export function createCollectionsTableController({
 
     tableContainer.innerHTML = html;
     const rows = Array.from(tableContainer.querySelectorAll('tbody tr.variable-row'));
-    const handles = Array.from(tableContainer.querySelectorAll('.drag-handle'));
+    const handles = Array.from(tableContainer.querySelectorAll('tbody tr.variable-row .drag-handle'));
     let draggedId = null;
     const clearDropState = () => {
       rows.forEach((row) => {

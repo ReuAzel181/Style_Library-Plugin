@@ -33,6 +33,9 @@ import { createCollectionsTableController } from "./collections-table-controller
     let activeGroupPath = 'All';
     let state = 'init';
     let collapsedGroups = new Set();
+    let groupChildOrder = new Map();
+    let editingGroupPath = null;
+    let groupContextMenuPath = null;
 
     // Undo/Redo State
     let history = [];
@@ -40,9 +43,20 @@ import { createCollectionsTableController } from "./collections-table-controller
     const MAX_HISTORY = 50;
     let historyTimeout = null;
 
+    function createHistorySnapshot() {
+      return {
+        modesData,
+        primitivesData,
+        activeCollection,
+        activeGroupPath,
+        collapsedGroups: Array.from(collapsedGroups),
+        groupChildOrder: Array.from(groupChildOrder.entries())
+      };
+    }
+
     function saveToHistory() {
       if (history.length === 0) {
-        history.push(JSON.parse(JSON.stringify({ modesData, primitivesData, activeCollection, activeGroupPath })));
+        history.push(JSON.parse(JSON.stringify(createHistorySnapshot())));
         historyIndex = 0;
       } else if (historyIndex < history.length - 1) {
         history = history.slice(0, historyIndex + 1);
@@ -51,12 +65,7 @@ import { createCollectionsTableController } from "./collections-table-controller
       if (historyTimeout) clearTimeout(historyTimeout);
       
       historyTimeout = setTimeout(() => {
-        const snapshotStr = JSON.stringify({
-          modesData,
-          primitivesData,
-          activeCollection,
-          activeGroupPath
-        });
+        const snapshotStr = JSON.stringify(createHistorySnapshot());
         
         if (historyIndex >= 0 && JSON.stringify(history[historyIndex]) === snapshotStr) {
           historyTimeout = null;
@@ -87,8 +96,10 @@ import { createCollectionsTableController } from "./collections-table-controller
     function applyHistoryState(stateObj) {
       modesData = stateObj.modesData;
       primitivesData = stateObj.primitivesData;
-      // Do not overwrite activeCollection and activeGroupPath
-      // so the user stays on the current page when undoing/redoing
+      activeCollection = stateObj.activeCollection ?? activeCollection;
+      activeGroupPath = stateObj.activeGroupPath ?? activeGroupPath;
+      collapsedGroups = new Set(stateObj.collapsedGroups || []);
+      groupChildOrder = new Map(stateObj.groupChildOrder || []);
       
       renderSidebar();
       const data = activeCollection === 'modes' ? modesData : primitivesData;
@@ -101,6 +112,7 @@ import { createCollectionsTableController } from "./collections-table-controller
     document.addEventListener('click', (e) => {
       const isColorModalOpen = cpModal.style.display === 'flex';
       const isVariablePickerOpen = pickerOverlay.style.display === 'block';
+      const contextMenu = document.getElementById('group-context-menu');
 
       if (isColorModalOpen && !cpModal.contains(e.target) && !e.target.closest('.color-opacity-row')) {
         saveToHistory();
@@ -109,6 +121,10 @@ import { createCollectionsTableController } from "./collections-table-controller
       
       if (isVariablePickerOpen && !pickerOverlay.querySelector('.variable-picker').contains(e.target) && !e.target.closest('.table-input') && !e.target.closest('.link-btn')) {
         hidePicker();
+      }
+      if (contextMenu && contextMenu.style.display === 'block' && !contextMenu.contains(e.target)) {
+        contextMenu.style.display = 'none';
+        groupContextMenuPath = null;
       }
     });
 
@@ -217,6 +233,32 @@ import { createCollectionsTableController } from "./collections-table-controller
     window.hideConfirmDialog = () => hideConfirmDialog(false);
     confirmCancelBtn.onclick = () => hideConfirmDialog(false);
     confirmOkBtn.onclick = () => hideConfirmDialog(true);
+    const groupContextMenu = document.createElement('div');
+    groupContextMenu.id = 'group-context-menu';
+    groupContextMenu.className = 'group-context-menu';
+    groupContextMenu.innerHTML = `
+      <button type="button" class="group-context-item" data-action="rename">Rename</button>
+      <button type="button" class="group-context-item danger" data-action="delete">Delete</button>
+    `;
+    document.body.appendChild(groupContextMenu);
+    groupContextMenu.addEventListener('click', (event) => {
+      const item = event.target.closest('.group-context-item');
+      if (!item) return;
+      const action = item.dataset.action;
+      const targetPath = groupContextMenuPath;
+      if (!targetPath) return;
+      if (action === 'rename') {
+        startEditingGroup(targetPath);
+      } else if (action === 'delete') {
+        deleteGroupPath(targetPath);
+      }
+      closeGroupContextMenu();
+    });
+    window.addEventListener('contextmenu', (event) => {
+      if (!event.target.closest('.group-item')) {
+        closeGroupContextMenu();
+      }
+    });
 
     function updateStatus(text, success = false) {
       if (statusMsg) {
@@ -233,8 +275,8 @@ import { createCollectionsTableController } from "./collections-table-controller
 
     function getLocalStylesSource() {
       return {
-        modesData: figmaModesData || { name: 'Modes (Desktop / Mobile)', modes: {}, variables: [] },
-        primitivesData: figmaPrimitivesData || { name: 'Primitives', modes: {}, variables: [] }
+        modesData: modesData || figmaModesData || { name: 'Modes (Desktop / Mobile)', modes: {}, variables: [] },
+        primitivesData: primitivesData || figmaPrimitivesData || { name: 'Primitives', modes: {}, variables: [] }
       };
     }
 
@@ -242,6 +284,12 @@ import { createCollectionsTableController } from "./collections-table-controller
       console.log('clicked, state:', state);
       if (document.activeElement && document.activeElement.blur) {
         document.activeElement.blur();
+      }
+      if (activeViewMode === 'local-styles') {
+        if (typeof localStylesPrimaryAction.onClick === 'function') {
+          localStylesPrimaryAction.onClick();
+        }
+        return;
       }
       
       // Remove disabled check since the button is visually enabled but the property might still be preventing clicks
@@ -253,6 +301,8 @@ import { createCollectionsTableController } from "./collections-table-controller
         progressTrack.style.display = 'block';
         progressFill.style.width = '40%';
         updateStatus('Syncing to Figma...');
+        alignCollectionOrderForSync(modesData);
+        alignCollectionOrderForSync(primitivesData);
         
         parent.postMessage({ 
           pluginMessage: { 
@@ -293,13 +343,10 @@ import { createCollectionsTableController } from "./collections-table-controller
         actionBtn.disabled = false;
         actionBtn.removeAttribute('disabled');
         
-        if (modesExist && primitivesExist) {
-          actionBtn.textContent = 'Load for Review';
-        } else {
-          actionBtn.textContent = 'Load for Review';
-        }
+        updatePrimaryActionButton();
         if (activeViewMode === 'local-styles') {
           localStylesController.render(getLocalStylesSource());
+          updatePrimaryActionButton();
         }
       }
 
@@ -394,8 +441,7 @@ import { createCollectionsTableController } from "./collections-table-controller
         if (!primitivesData) primitivesData = incomingPrimitives;
         
         state = 'sync';
-        actionBtn.textContent = 'Sync to Variables';
-        actionBtn.disabled = false;
+        updatePrimaryActionButton();
         
         // Don't force page change, just re-render current view
         if (activeViewMode === 'collections') {
@@ -404,6 +450,7 @@ import { createCollectionsTableController } from "./collections-table-controller
           document.getElementById('table-container').style.display = 'block';
         } else {
           localStylesController.render(getLocalStylesSource());
+          updatePrimaryActionButton();
         }
         
         updateStatus('Review content before syncing');
@@ -413,7 +460,7 @@ import { createCollectionsTableController } from "./collections-table-controller
         progressFill.style.width = '100%';
         updateStatus(msg.message, true);
         state = 'init';
-        actionBtn.textContent = 'Load for Review';
+        updatePrimaryActionButton();
         parent.postMessage({ pluginMessage: { type: 'check-collections' } }, '*');
       }
 
@@ -470,35 +517,324 @@ import { createCollectionsTableController } from "./collections-table-controller
       return root;
     }
 
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function getActiveCollectionData() {
+      return activeCollection === 'modes' ? modesData : primitivesData;
+    }
+
+    function getGroupOrderKey(parentPath) {
+      return parentPath && parentPath !== '' ? parentPath : 'All';
+    }
+
+    function closeGroupContextMenu() {
+      const contextMenu = document.getElementById('group-context-menu');
+      if (!contextMenu) return;
+      contextMenu.style.display = 'none';
+      groupContextMenuPath = null;
+    }
+
+    function openGroupContextMenu(groupPath, clientX, clientY) {
+      const contextMenu = document.getElementById('group-context-menu');
+      if (!contextMenu || !groupPath || groupPath === 'All') return;
+      groupContextMenuPath = groupPath;
+      contextMenu.style.display = 'block';
+      const maxX = Math.max(8, window.innerWidth - contextMenu.offsetWidth - 8);
+      const maxY = Math.max(8, window.innerHeight - contextMenu.offsetHeight - 8);
+      contextMenu.style.left = `${Math.min(clientX, maxX)}px`;
+      contextMenu.style.top = `${Math.min(clientY, maxY)}px`;
+    }
+
+    function startEditingGroup(groupPath) {
+      if (!groupPath || groupPath === 'All') return;
+      editingGroupPath = groupPath;
+      closeGroupContextMenu();
+      renderGroups();
+      requestAnimationFrame(() => {
+        const input = groupList.querySelector(`.group-rename-input[data-group-path="${groupPath}"]`);
+        if (input) {
+          input.focus();
+          input.select();
+        }
+      });
+    }
+
+    function stopEditingGroup() {
+      if (!editingGroupPath) return;
+      editingGroupPath = null;
+      renderGroups();
+    }
+
+    function removeDeletedGroupOrders(deletedPath) {
+      const entries = Array.from(groupChildOrder.entries());
+      const next = new Map();
+      entries.forEach(([key, order]) => {
+        if (key === deletedPath || key.startsWith(`${deletedPath}/`)) return;
+        next.set(key, order);
+      });
+      groupChildOrder = next;
+    }
+
+    function getOrderedChildNames(children, parentPath) {
+      const names = Object.keys(children || {});
+      const sorted = names.slice().sort((a, b) => a.localeCompare(b));
+      const key = getGroupOrderKey(parentPath);
+      const existingOrder = groupChildOrder.get(key) || [];
+      const normalizedOrder = [
+        ...existingOrder.filter((name) => names.includes(name)),
+        ...sorted.filter((name) => !existingOrder.includes(name))
+      ];
+      groupChildOrder.set(key, normalizedOrder);
+      return normalizedOrder;
+    }
+
+    function buildVariableTree(variables) {
+      const root = { children: {}, vars: [] };
+      (variables || []).forEach((variable) => {
+        const segments = String(variable.name || '').split('/');
+        if (segments.length <= 1) {
+          if (!root.children.Ungrouped) root.children.Ungrouped = { children: {}, vars: [] };
+          root.children.Ungrouped.vars.push(variable);
+          return;
+        }
+        const folders = segments.slice(0, -1);
+        let node = root;
+        folders.forEach((folder) => {
+          if (!node.children[folder]) node.children[folder] = { children: {}, vars: [] };
+          node = node.children[folder];
+        });
+        node.vars.push(variable);
+      });
+      return root;
+    }
+
+    function collectVariablesInVisualOrder(node, parentPath = 'All') {
+      const ordered = [];
+      const orderedChildNames = getOrderedChildNames(node.children, parentPath);
+      orderedChildNames.forEach((name) => {
+        const child = node.children[name];
+        ordered.push(...(child.vars || []));
+        const childPath = parentPath === 'All' ? name : `${parentPath}/${name}`;
+        ordered.push(...collectVariablesInVisualOrder(child, childPath));
+      });
+      return ordered;
+    }
+
+    function alignCollectionOrderForSync(data) {
+      if (!data || !Array.isArray(data.variables)) return;
+      const tree = buildVariableTree(data.variables);
+      const visualOrder = collectVariablesInVisualOrder(tree, 'All');
+      const orderedIds = new Set(visualOrder.map((variable) => variable.id));
+      const trailing = data.variables.filter((variable) => !orderedIds.has(variable.id));
+      data.variables = [...visualOrder, ...trailing];
+      data.variableIds = data.variables.map((variable) => variable.id);
+    }
+
+    function remapGroupOrderKeys(oldPath, newPath) {
+      const entries = Array.from(groupChildOrder.entries());
+      const next = new Map();
+      entries.forEach(([key, value]) => {
+        let nextKey = key;
+        if (key === oldPath || key.startsWith(`${oldPath}/`)) {
+          nextKey = `${newPath}${key.slice(oldPath.length)}`;
+        }
+        next.set(nextKey, value);
+      });
+      groupChildOrder = next;
+    }
+
+    function reorderGroups(draggedPath, targetPath, placeAfter, parentPath) {
+      if (!draggedPath || !targetPath || draggedPath === targetPath) return;
+      const parentKey = getGroupOrderKey(parentPath);
+      const draggedName = draggedPath.split('/').pop();
+      const targetName = targetPath.split('/').pop();
+      const currentOrder = [...(groupChildOrder.get(parentKey) || [])];
+      if (!currentOrder.includes(draggedName) || !currentOrder.includes(targetName)) return;
+      saveToHistory();
+      const fromIndex = currentOrder.indexOf(draggedName);
+      let toIndex = currentOrder.indexOf(targetName);
+      if (fromIndex === toIndex) return;
+      currentOrder.splice(fromIndex, 1);
+      if (fromIndex < toIndex) toIndex--;
+      const insertAt = placeAfter ? toIndex + 1 : toIndex;
+      currentOrder.splice(insertAt, 0, draggedName);
+      groupChildOrder.set(parentKey, currentOrder);
+      renderSidebar();
+      const data = getActiveCollectionData();
+      if (data) renderTable(data);
+    }
+
+    async function deleteGroupPath(groupPath) {
+      const data = getActiveCollectionData();
+      if (!data || !groupPath || groupPath === 'All') return;
+      closeGroupContextMenu();
+      const accepted = await showConfirmDialog({
+        title: 'Delete group',
+        message: `Delete "${groupPath}" and all variables inside it?`,
+        okLabel: 'Delete',
+        cancelLabel: 'Cancel'
+      });
+      if (!accepted) return;
+      saveToHistory();
+      const groupPrefix = `${groupPath}/`;
+      if (groupPath === 'Ungrouped') {
+        data.variables = data.variables.filter((variable) => String(variable.name).includes('/'));
+      } else {
+        data.variables = data.variables.filter((variable) => !String(variable.name).startsWith(groupPrefix));
+      }
+      const parentPath = groupPath.includes('/') ? groupPath.slice(0, groupPath.lastIndexOf('/')) : '';
+      const parentKey = getGroupOrderKey(parentPath);
+      const leafName = groupPath.split('/').pop();
+      const parentOrder = groupChildOrder.get(parentKey) || [];
+      groupChildOrder.set(parentKey, parentOrder.filter((name) => name !== leafName));
+      removeDeletedGroupOrders(groupPath);
+      if (activeGroupPath === groupPath || activeGroupPath.startsWith(`${groupPath}/`)) {
+        activeGroupPath = 'All';
+      }
+      const remappedCollapsed = new Set();
+      collapsedGroups.forEach((path) => {
+        if (path === groupPath || path.startsWith(`${groupPath}/`)) return;
+        remappedCollapsed.add(path);
+      });
+      collapsedGroups = remappedCollapsed;
+      if (editingGroupPath === groupPath || String(editingGroupPath || '').startsWith(`${groupPath}/`)) {
+        editingGroupPath = null;
+      }
+      renderSidebar();
+      renderTable(data);
+      showToast('Group deleted', 'success');
+    }
+
+    function renameGroupPath(oldPath, nextLeafName) {
+      const data = getActiveCollectionData();
+      if (!data || !oldPath || oldPath === 'All') return;
+      const trimmed = String(nextLeafName || '').trim();
+      if (!trimmed) return;
+      if (trimmed.includes('/')) {
+        showToast('Group name cannot include "/"', 'error');
+        return;
+      }
+      const oldSegments = oldPath.split('/');
+      const oldLeafName = oldSegments[oldSegments.length - 1];
+      if (trimmed === oldLeafName) return;
+      const parentPath = oldSegments.slice(0, -1).join('/');
+      const newPath = parentPath ? `${parentPath}/${trimmed}` : trimmed;
+      const oldPrefix = `${oldPath}/`;
+      const newPrefix = `${newPath}/`;
+      if (oldPath !== 'Ungrouped') {
+        const hasConflict = data.variables.some((variable) => variable.name.startsWith(newPrefix) && !variable.name.startsWith(oldPrefix));
+        if (hasConflict) {
+          showToast('A group with that name already exists', 'error');
+          return;
+        }
+      }
+      saveToHistory();
+      if (oldPath === 'Ungrouped') {
+        data.variables.forEach((variable) => {
+          if (!String(variable.name).includes('/')) {
+            variable.name = `${trimmed}/${variable.name}`;
+          }
+        });
+      } else {
+        data.variables.forEach((variable) => {
+          if (variable.name.startsWith(oldPrefix)) {
+            variable.name = `${newPrefix}${variable.name.slice(oldPrefix.length)}`;
+          }
+        });
+      }
+      const parentKey = getGroupOrderKey(parentPath);
+      const parentOrder = groupChildOrder.get(parentKey);
+      if (Array.isArray(parentOrder)) {
+        groupChildOrder.set(parentKey, parentOrder.map((name) => (name === oldLeafName ? trimmed : name)));
+      }
+      if (oldPath !== 'Ungrouped') {
+        remapGroupOrderKeys(oldPath, newPath);
+      }
+      const remappedCollapsed = new Set();
+      collapsedGroups.forEach((path) => {
+        if (path === oldPath || path.startsWith(`${oldPath}/`)) {
+          remappedCollapsed.add(`${newPath}${path.slice(oldPath.length)}`);
+        } else {
+          remappedCollapsed.add(path);
+        }
+      });
+      collapsedGroups = remappedCollapsed;
+      if (activeGroupPath === oldPath || activeGroupPath.startsWith(`${oldPath}/`)) {
+        activeGroupPath = `${newPath}${activeGroupPath.slice(oldPath.length)}`;
+      }
+      if (editingGroupPath === oldPath || String(editingGroupPath || '').startsWith(`${oldPath}/`)) {
+        editingGroupPath = `${newPath}${editingGroupPath.slice(oldPath.length)}`;
+      }
+      renderSidebar();
+      renderTable(data);
+      showToast('Group renamed', 'success');
+    }
+
+    window.renameGroup = (groupPath, nextName) => {
+      renameGroupPath(groupPath, nextName);
+    };
+
     function renderGroups() {
       groupList.innerHTML = '';
-      const data = activeCollection === 'modes' ? modesData : primitivesData;
+      const data = getActiveCollectionData();
       if (!data) return;
+      closeGroupContextMenu();
 
       const hierarchy = buildHierarchy(data.variables);
+      let draggedGroupPath = null;
+      let draggedParentPath = null;
+      const clearGroupDropState = () => {
+        groupList.querySelectorAll('.group-item').forEach((item) => {
+          item.classList.remove('dragging');
+          item.classList.remove('drag-over-before');
+          item.classList.remove('drag-over-after');
+        });
+      };
       
       const renderNode = (node, container, path = '', level = 0) => {
         const fullPath = path ? `${path}/${node.name}` : node.name;
         const isAll = node.name === 'All';
         const displayPath = isAll ? 'All' : fullPath.replace('All/', '');
+        const parentPath = isAll ? '' : (path || 'All').replace('All/', '');
         
         const itemEl = document.createElement('div');
         const hasChildren = Object.keys(node.children).length > 0;
         const isCollapsed = collapsedGroups.has(displayPath);
         
         itemEl.className = `group-item ${activeGroupPath === displayPath ? 'active' : ''} ${isCollapsed ? 'collapsed' : ''}`;
+        itemEl.dataset.groupPath = displayPath;
+        itemEl.dataset.parentPath = isAll ? '' : parentPath;
+        itemEl.draggable = !isAll;
         
         let indent = '';
         for(let i=0; i<level; i++) indent += '<div class="group-indent"></div>';
 
-        itemEl.innerHTML = `
-          ${indent}
-          ${hasChildren ? '<svg class="group-arrow" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" stroke-width="3"></path></svg>' : '<div class="group-indent"></div>'}
-          <span class="group-title" style="${isAll ? 'font-weight: 800;' : ''}">${node.name}</span>
-          <span class="group-count">${node.count}</span>
-        `;
+        if (editingGroupPath === displayPath && !isAll) {
+          itemEl.innerHTML = `
+            ${indent}
+            ${hasChildren ? '<svg class="group-arrow" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" stroke-width="3"></path></svg>' : '<div class="group-indent"></div>'}
+            <input class="group-rename-input" data-group-path="${displayPath}" value="${escapeHtml(node.name)}" />
+            <span class="group-count">${node.count}</span>
+          `;
+        } else {
+          itemEl.innerHTML = `
+            ${indent}
+            ${hasChildren ? '<svg class="group-arrow" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" stroke-width="3"></path></svg>' : '<div class="group-indent"></div>'}
+            <span class="group-title">${node.name}</span>
+            <span class="group-count">${node.count}</span>
+          `;
+        }
 
         itemEl.onclick = (e) => {
+          if (editingGroupPath === displayPath) return;
+          closeGroupContextMenu();
           if (hasChildren) {
             const childrenContainer = itemEl.nextElementSibling;
             if (isCollapsed) {
@@ -525,8 +861,75 @@ import { createCollectionsTableController } from "./collections-table-controller
           }
           selectGroup(displayPath);
         };
+        itemEl.oncontextmenu = (event) => {
+          if (isAll) return;
+          event.preventDefault();
+          openGroupContextMenu(displayPath, event.clientX, event.clientY);
+        };
+        itemEl.ondragstart = (event) => {
+          if (isAll) {
+            event.preventDefault();
+            return;
+          }
+          draggedGroupPath = displayPath;
+          draggedParentPath = parentPath;
+          itemEl.classList.add('dragging');
+          closeGroupContextMenu();
+          if (event.dataTransfer) {
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', displayPath);
+          }
+        };
+        itemEl.ondragover = (event) => {
+          if (!draggedGroupPath || draggedGroupPath === displayPath) return;
+          if (draggedParentPath !== parentPath) return;
+          event.preventDefault();
+          itemEl.classList.remove('drag-over-before');
+          itemEl.classList.remove('drag-over-after');
+          const rect = itemEl.getBoundingClientRect();
+          const placeAfter = event.clientY >= rect.top + rect.height / 2;
+          itemEl.classList.add(placeAfter ? 'drag-over-after' : 'drag-over-before');
+        };
+        itemEl.ondragleave = () => {
+          itemEl.classList.remove('drag-over-before');
+          itemEl.classList.remove('drag-over-after');
+        };
+        itemEl.ondrop = (event) => {
+          if (!draggedGroupPath || draggedGroupPath === displayPath) return;
+          if (draggedParentPath !== parentPath) return;
+          event.preventDefault();
+          const rect = itemEl.getBoundingClientRect();
+          const placeAfter = event.clientY >= rect.top + rect.height / 2;
+          reorderGroups(draggedGroupPath, displayPath, placeAfter, parentPath);
+          clearGroupDropState();
+          draggedGroupPath = null;
+          draggedParentPath = null;
+        };
+        itemEl.ondragend = () => {
+          clearGroupDropState();
+          draggedGroupPath = null;
+          draggedParentPath = null;
+        };
 
         container.appendChild(itemEl);
+        const renameInput = itemEl.querySelector('.group-rename-input');
+        if (renameInput) {
+          renameInput.onblur = () => {
+            const nextName = renameInput.value;
+            editingGroupPath = null;
+            renameGroupPath(displayPath, nextName);
+          };
+          renameInput.onkeydown = (event) => {
+            if (event.key === 'Enter') {
+              renameInput.blur();
+            }
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              stopEditingGroup();
+            }
+          };
+          renameInput.onclick = (event) => event.stopPropagation();
+        }
 
         if (hasChildren) {
           const childrenContainer = document.createElement('div');
@@ -534,8 +937,8 @@ import { createCollectionsTableController } from "./collections-table-controller
           childrenContainer.style.display = isCollapsed ? 'none' : 'block';
           container.appendChild(childrenContainer);
 
-          const sortedChildren = Object.keys(node.children).sort();
-          sortedChildren.forEach(childName => {
+          const orderedChildren = getOrderedChildNames(node.children, displayPath);
+          orderedChildren.forEach(childName => {
             renderNode(node.children[childName], childrenContainer, fullPath, level + 1);
           });
         }
@@ -555,17 +958,23 @@ import { createCollectionsTableController } from "./collections-table-controller
       activeCollection = id;
       activeGroupPath = 'All';
       collapsedGroups.clear();
+      groupChildOrder = new Map();
+      editingGroupPath = null;
+      closeGroupContextMenu();
       renderSidebar();
       
       const data = id === 'modes' ? modesData : primitivesData;
       const exists = id === 'modes' ? modesExist : primitivesExist;
+      if (!data) {
+        viewTitle.textContent = 'Select a collection';
+        tokenTotal.textContent = '0 tokens';
+        duplicateNotice.style.display = 'none';
+        return;
+      }
       
       viewTitle.textContent = data.name;
       duplicateNotice.style.display = exists ? 'flex' : 'none';
-      
-      if (state === 'sync') {
-        renderTable(data);
-      }
+      renderTable(data);
     }
 
     window.addVariable = function(type, groupPath) {
@@ -1027,6 +1436,20 @@ import { createCollectionsTableController } from "./collections-table-controller
     let localStylesSyncTimer = null;
     let localStylesSyncPending = false;
     let lastLocalStylesSyncAt = 0;
+    let localStylesPrimaryAction = {
+      label: 'Import Grid',
+      disabled: true,
+      onClick: null
+    };
+    const updatePrimaryActionButton = () => {
+      if (activeViewMode === 'local-styles') {
+        actionBtn.textContent = localStylesPrimaryAction.label || 'Import Grid';
+        actionBtn.disabled = !!localStylesPrimaryAction.disabled;
+        return;
+      }
+      actionBtn.textContent = state === 'init' ? 'Load for Review' : 'Sync to Variables';
+      actionBtn.disabled = false;
+    };
     const requestLocalStylesSync = (force = false) => {
       if (activeViewMode !== 'local-styles') return;
       if (localStylesSyncPending) return;
@@ -1075,11 +1498,22 @@ import { createCollectionsTableController } from "./collections-table-controller
       picker.style.left = `${Math.min(rect.left, window.innerWidth - 330)}px`;
       window.renderLocalOptionList('');
     };
-    const localStylesController = createLocalStylesController({ openLocalOptionPicker });
+    const localStylesController = createLocalStylesController({
+      openLocalOptionPicker,
+      onPrimaryActionChange: (nextAction) => {
+        localStylesPrimaryAction = {
+          label: nextAction?.label || 'Import Grid',
+          disabled: !!nextAction?.disabled,
+          onClick: typeof nextAction?.onClick === 'function' ? nextAction.onClick : null
+        };
+        updatePrimaryActionButton();
+      }
+    });
     const collectionsTableController = createCollectionsTableController({
       tableContainer,
       tokenTotal,
       getActiveGroupPath: () => activeGroupPath,
+      getGroupChildOrder: (parentPath) => groupChildOrder.get(parentPath || 'All') || [],
       getFontWeightName,
       formatFigmaWeight,
       getFontWeightNum,
@@ -1101,6 +1535,7 @@ import { createCollectionsTableController } from "./collections-table-controller
         if (fromIndex < toIndex) toIndex--;
         const insertIndex = placeAfter ? toIndex + 1 : toIndex;
         data.variables.splice(insertIndex, 0, moved);
+        data.variableIds = data.variables.map((v) => v.id);
         renderTable(data);
       }
     });
@@ -1108,6 +1543,7 @@ import { createCollectionsTableController } from "./collections-table-controller
       localStylesController.switchNav(navId);
       requestLocalStylesSync(true);
       localStylesController.render(getLocalStylesSource());
+      updatePrimaryActionButton();
     };
 
     tabCollections.onclick = () => {
@@ -1117,6 +1553,7 @@ import { createCollectionsTableController } from "./collections-table-controller
       tabLocalStyles.classList.remove('active');
       collectionsView.style.display = 'flex';
       localStylesView.style.display = 'none';
+      updatePrimaryActionButton();
     };
 
     tabLocalStyles.onclick = () => {
@@ -1128,6 +1565,7 @@ import { createCollectionsTableController } from "./collections-table-controller
       localStylesView.style.display = 'flex';
       requestLocalStylesSync(true);
       localStylesController.render(getLocalStylesSource());
+      updatePrimaryActionButton();
     };
     window.openLocalGridColorPicker = (rowKey, event) => {
       if (event) event.stopPropagation();

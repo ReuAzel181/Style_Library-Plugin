@@ -1,4 +1,4 @@
-export function createLocalStylesController({ openLocalOptionPicker }) {
+export function createLocalStylesController({ openLocalOptionPicker, onPrimaryActionChange }) {
   const localStyleDraft = {
     grid: [
       { key: 'expanded', name: 'Grid/Expanded', count: '12', color: '#0080FF', opacity: '10', type: 'Stretch', width: 'Auto', margin: '156', gutter: '32' },
@@ -34,11 +34,14 @@ export function createLocalStylesController({ openLocalOptionPicker }) {
 
   const render = ({ modesData, primitivesData }) => {
     const content = document.getElementById('local-styles-content');
-    const importBtn = document.getElementById('ls-import-btn');
     const setImportButton = (label, isDisabled, onClick) => {
-      importBtn.textContent = label;
-      importBtn.disabled = isDisabled;
-      importBtn.onclick = isDisabled ? null : onClick;
+      if (typeof onPrimaryActionChange === 'function') {
+        onPrimaryActionChange({
+          label,
+          disabled: isDisabled,
+          onClick: isDisabled ? null : onClick
+        });
+      }
     };
 
     const allVariables = [
@@ -271,10 +274,15 @@ export function createLocalStylesController({ openLocalOptionPicker }) {
         ${createEditableCell(section, row.key, 'case', row.case, textCaseOptions, 'Sample Text')}
       </tr>
     `;
-    const buildTypographyPayloadRows = () => {
+    const buildTypographyPayloadRows = (section = 'all') => {
       const headingRows = sortedHeadings.map(h => ({ ...getTypographyRow('heading', h), section: 'heading' }));
       const bodyRows = sortedBodyTexts.map(b => ({ ...getTypographyRow('body', b), section: 'body' }));
-      return [...headingRows, ...bodyRows].map(row => ({
+      const mergedRows = section === 'heading'
+        ? headingRows
+        : section === 'body'
+          ? bodyRows
+          : [...headingRows, ...bodyRows];
+      return mergedRows.map(row => ({
         ...row,
         lineHeightUnit: row.lineHeightIsPercent ? 'PERCENT' : 'PIXELS',
         lineSpacingUnit: row.lineSpacingIsPercent ? 'PERCENT' : 'PIXELS'
@@ -355,7 +363,7 @@ export function createLocalStylesController({ openLocalOptionPicker }) {
           </tbody>
         </table>
       `;
-      setImportButton('Import Grid Styles', localStyleDraft.grid.length === 0, () => {
+      setImportButton('Import Grid', localStyleDraft.grid.length === 0, () => {
         const rows = localStyleDraft.grid.map(row => ({
           name: row.name,
           count: Math.max(1, Math.round(toNumber(row.count, 12))),
@@ -393,9 +401,9 @@ export function createLocalStylesController({ openLocalOptionPicker }) {
             </tbody>
           </table>
         `;
-        setImportButton('Import All Typography Styles', rows.length === 0 && sortedBodyTexts.length === 0, () => {
-          const payloadRows = buildTypographyPayloadRows();
-          parent.postMessage({ pluginMessage: { type: 'create-text-styles', data: { section: 'all', rows: payloadRows } } }, '*');
+        setImportButton('Import Heading', rows.length === 0, () => {
+          const payloadRows = buildTypographyPayloadRows('heading');
+          parent.postMessage({ pluginMessage: { type: 'create-text-styles', data: { section: 'heading', rows: payloadRows } } }, '*');
         });
       } else {
         tableHtml = `
@@ -403,10 +411,7 @@ export function createLocalStylesController({ openLocalOptionPicker }) {
             <div style="margin-bottom: 16px;">No heading variables detected.</div>
           </div>
         `;
-        setImportButton('Import All Typography Styles', sortedBodyTexts.length === 0, () => {
-          const payloadRows = buildTypographyPayloadRows();
-          parent.postMessage({ pluginMessage: { type: 'create-text-styles', data: { section: 'all', rows: payloadRows } } }, '*');
-        });
+        setImportButton('Import Heading', true, () => {});
       }
     } else if (activeLSNav === 'body') {
       const theadHtml = `
@@ -433,9 +438,9 @@ export function createLocalStylesController({ openLocalOptionPicker }) {
             </tbody>
           </table>
         `;
-        setImportButton('Import All Typography Styles', rows.length === 0 && sortedHeadings.length === 0, () => {
-          const payloadRows = buildTypographyPayloadRows();
-          parent.postMessage({ pluginMessage: { type: 'create-text-styles', data: { section: 'all', rows: payloadRows } } }, '*');
+        setImportButton('Import Text', rows.length === 0, () => {
+          const payloadRows = buildTypographyPayloadRows('body');
+          parent.postMessage({ pluginMessage: { type: 'create-text-styles', data: { section: 'body', rows: payloadRows } } }, '*');
         });
       } else {
         tableHtml = `
@@ -443,10 +448,7 @@ export function createLocalStylesController({ openLocalOptionPicker }) {
             <div style="margin-bottom: 16px;">No body variables detected.</div>
           </div>
         `;
-        setImportButton('Import All Typography Styles', sortedHeadings.length === 0, () => {
-          const payloadRows = buildTypographyPayloadRows();
-          parent.postMessage({ pluginMessage: { type: 'create-text-styles', data: { section: 'all', rows: payloadRows } } }, '*');
-        });
+        setImportButton('Import Text', true, () => {});
       }
     }
 
