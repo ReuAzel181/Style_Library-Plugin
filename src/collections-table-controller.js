@@ -227,7 +227,49 @@ export function createCollectionsTableController({
     };
     const renderGroupNode = (node, level = 0, parentPath = 'All') => {
       const childNames = Object.keys(node.children || {});
-      let names = childNames.slice().sort((a, b) => a.localeCompare(b));
+      
+      // --- CUSTOM GROUP ORDERING LOGIC START ---
+      // Modify this function to change default group positions.
+      // Higher weight = closer to the top. Lower weight = closer to the bottom.
+      const getGroupWeight = (name) => {
+        const n = String(name).toLowerCase();
+        if (n === 'color') return 100;
+        
+        // Color subgroups
+        if (n === 'brand color') return 109;
+        if (n === 'grey tones') return 108;
+        if (n === 'opacity white') return 107;
+        if (n === 'opacity black') return 106;
+        
+        // Modes layout arrangement
+        if (n === 'screen size') return 90;
+        if (n === 'container') return 80;
+        if (n === 'section margin') return 70;
+        if (n === 'section padding') return 60;
+        
+        // Typography subgroups arrangement
+        if (n === 'heading') return 50;
+        if (n === 'text') return 40;
+        if (n === 'navlinks') return 30;
+        if (n === 'button text') return 20;
+        
+        // Typography subgroups (primitives/other)
+        if (n === 'font family') return 19;
+        if (n === 'font weight') return 18;
+        if (n === 'typography color') return 17;
+
+        if (n === 'typography') return -100;
+        return 0; // Default
+      };
+      // --- CUSTOM GROUP ORDERING LOGIC END ---
+
+      let names = childNames.slice().sort((a, b) => {
+        const weightA = getGroupWeight(a);
+        const weightB = getGroupWeight(b);
+        if (weightA !== weightB) return weightB - weightA;
+        return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+      });
+
       if (typeof getGroupChildOrder === 'function') {
         const preferred = getGroupChildOrder(parentPath);
         if (Array.isArray(preferred) && preferred.length) {
@@ -253,7 +295,10 @@ export function createCollectionsTableController({
             </td>
           </tr>
         `;
-        (child.vars || []).forEach((v) => { html += variableRowHtml(v, level + 1); });
+        
+        const sortedVars = (child.vars || []).slice();
+        
+        sortedVars.forEach((v) => { html += variableRowHtml(v, level + 1); });
         const childPath = parentPath === 'All' ? name : `${parentPath}/${name}`;
         renderGroupNode(child, level + 1, childPath);
       });

@@ -136,19 +136,8 @@ export function createLocalStylesController({ openLocalOptionPicker, onPrimaryAc
     updateNavUi();
     document.getElementById('ls-count-heading').textContent = headings.length;
     document.getElementById('ls-count-body').textContent = bodyTexts.length;
-    const sortTypography = (arr) => {
-      return arr.sort((a, b) => {
-        const nameA = a.name.split('/').pop().toLowerCase();
-        const nameB = b.name.split('/').pop().toLowerCase();
-        if (nameA === 'heading_small' && nameB === 'h1') return -1;
-        if (nameA === 'h1' && nameB === 'heading_small') return 1;
-        const valA = parseFloat(getResolvedVal(a)) || 0;
-        const valB = parseFloat(getResolvedVal(b)) || 0;
-        return valB - valA;
-      });
-    };
-    const sortedHeadings = sortTypography(headings);
-    const sortedBodyTexts = sortTypography(bodyTexts);
+    const sortedHeadings = headings;
+    const sortedBodyTexts = bodyTexts;
     const headingLineHeightMap = {
       heading_3xlarge: 100,
       heading_2xlarge: 100,

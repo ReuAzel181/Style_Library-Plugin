@@ -280,6 +280,22 @@ import { createCollectionsTableController } from "./collections-table-controller
       };
     }
 
+    const syncVariablesToFigma = () => {
+      progressTrack.style.display = 'block';
+      progressFill.style.width = '40%';
+      updateStatus('Syncing to Figma...');
+      alignCollectionOrderForSync(modesData);
+      alignCollectionOrderForSync(primitivesData);
+      
+      parent.postMessage({ 
+        pluginMessage: { 
+          type: 'request-import',
+          modesRaw: JSON.stringify(modesData),
+          primitivesRaw: JSON.stringify(primitivesData)
+        } 
+      }, '*');
+    };
+
     actionBtn.onclick = () => {
       console.log('clicked, state:', state);
       if (document.activeElement && document.activeElement.blur) {
@@ -298,18 +314,7 @@ import { createCollectionsTableController } from "./collections-table-controller
         updateStatus('Fetching library data...');
         parent.postMessage({ pluginMessage: { type: 'request-token-data' } }, '*');
       } else {
-        progressTrack.style.display = 'block';
-        progressFill.style.width = '40%';
-        updateStatus('Syncing to Figma...');
-        alignCollectionOrderForSync(modesData);
-        alignCollectionOrderForSync(primitivesData);
-        
-        parent.postMessage({ 
-          pluginMessage: { 
-            type: 'request-import',
-            data: { modesData, primitivesData }
-          } 
-        }, '*');
+        syncVariablesToFigma();
       }
     };
 
@@ -584,7 +589,49 @@ import { createCollectionsTableController } from "./collections-table-controller
 
     function getOrderedChildNames(children, parentPath) {
       const names = Object.keys(children || {});
-      const sorted = names.slice().sort((a, b) => a.localeCompare(b));
+
+      // --- CUSTOM GROUP ORDERING LOGIC START ---
+      // Modify this function to change default group positions.
+      // Higher weight = closer to the top. Lower weight = closer to the bottom.
+      const getGroupWeight = (name) => {
+        const n = String(name).toLowerCase();
+        if (n === 'color') return 100;
+        
+        // Color subgroups
+        if (n === 'brand color') return 109;
+        if (n === 'grey tones') return 108;
+        if (n === 'opacity white') return 107;
+        if (n === 'opacity black') return 106;
+        
+        // Modes layout arrangement
+        if (n === 'screen size') return 90;
+        if (n === 'container') return 80;
+        if (n === 'section margin') return 70;
+        if (n === 'section padding') return 60;
+        
+        // Typography subgroups arrangement
+        if (n === 'heading') return 50;
+        if (n === 'text') return 40;
+        if (n === 'navlinks') return 30;
+        if (n === 'button text') return 20;
+        
+        // Typography subgroups (primitives/other)
+        if (n === 'font family') return 19;
+        if (n === 'font weight') return 18;
+        if (n === 'typography color') return 17;
+
+        if (n === 'typography') return -100;
+        return 0; // Default
+      };
+      // --- CUSTOM GROUP ORDERING LOGIC END ---
+
+      const sorted = names.slice().sort((a, b) => {
+        const weightA = getGroupWeight(a);
+        const weightB = getGroupWeight(b);
+        if (weightA !== weightB) return weightB - weightA;
+        return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+      });
+
       const key = getGroupOrderKey(parentPath);
       const existingOrder = groupChildOrder.get(key) || [];
       const normalizedOrder = [
@@ -620,7 +667,10 @@ import { createCollectionsTableController } from "./collections-table-controller
       const orderedChildNames = getOrderedChildNames(node.children, parentPath);
       orderedChildNames.forEach((name) => {
         const child = node.children[name];
-        ordered.push(...(child.vars || []));
+        
+        const sortedVars = (child.vars || []).slice();
+        ordered.push(...sortedVars);
+        
         const childPath = parentPath === 'All' ? name : `${parentPath}/${name}`;
         ordered.push(...collectVariablesInVisualOrder(child, childPath));
       });
